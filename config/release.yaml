@@ -1,0 +1,213 @@
+# Miden release monitoring configuration.
+# Verified against live GitHub + network state on 2026-08-31.
+#
+# NOTE the per-component `branch`: the v0.16 train does NOT live on every
+# repo's default branch (protocol keeps it on release/v0.16.0-rc, web-sdk and
+# wallet keep it on next). `targetTrain` on a detector overrides the
+# release-wide target when the dependency runs its own version train
+# (miden-vm 0.29.x feeds protocol 0.16; Guardian 0.17.x feeds wallet 1.16).
+
+release:
+  name: "Miden v0.16"
+  targetVersion: "0.16"
+  targetDate: null
+
+components:
+  - id: vm
+    label: "Miden VM"
+    repo: 0xMiden/miden-vm
+    branch: next
+    owner: "VM team"
+    expectedVersion: "0.30.0"
+    group: chain
+    detectors:
+      - type: github-release
+
+  - id: protocol
+    label: "Protocol"
+    repo: 0xMiden/protocol
+    branch: release/v0.16.0-rc
+    owner: "Protocol team"
+    expectedVersion: "0.16.0"
+    group: chain
+    dependsOn: [vm]
+    detectors:
+      - type: github-release
+      # Protocol 0.16 consumes the VM 0.29 train (0.30 was never adopted).
+      - type: cargo-dep
+        dependency: miden-core
+        targetTrain: "0.29"
+
+  - id: node
+    label: "Node"
+    repo: 0xMiden/node
+    branch: next
+    owner: "Node team"
+    expectedVersion: "0.16.0"
+    group: chain
+    dependsOn: [protocol]
+    detectors:
+      - type: github-release
+      - type: cargo-dep
+        dependency: miden-protocol
+
+  - id: rust-sdk
+    label: "Rust SDK"
+    repo: 0xMiden/rust-sdk
+    branch: next
+    owner: "Wiktor"
+    expectedVersion: "0.16.0"
+    group: sdk
+    dependsOn: [protocol, node]
+    detectors:
+      - type: github-release
+      - type: cargo-dep
+        dependency: miden-protocol
+      # The only node edge: the build-time proto crate.
+      - type: cargo-dep
+        dependency: miden-node-proto-build
+
+  - id: web-sdk
+    label: "Web SDK"
+    repo: 0xMiden/web-sdk
+    branch: next
+    owner: "Wiktor"
+    expectedVersion: "0.16.0"
+    group: sdk
+    dependsOn: [protocol, node]
+    detectors:
+      - type: github-release
+      - type: cargo-dep
+        dependency: miden-client
+
+  - id: guardian
+    label: "Guardian"
+    repo: OpenZeppelin/guardian
+    branch: main
+    owner: "OpenZeppelin"
+    expectedVersion: "0.17.0" # Guardian runs its own version train
+    group: app
+    dependsOn: [rust-sdk, web-sdk]
+    detectors:
+      - type: github-release
+      - type: cargo-dep
+        dependency: miden-protocol
+      - type: npm-dep
+        path: packages/miden-multisig-client/package.json
+        dependency: "@miden-sdk/miden-sdk"
+
+  - id: wallet
+    label: "Wallet"
+    repo: 0xMiden/wallet
+    branch: next
+    owner: "Wiktor"
+    expectedVersion: "1.16.0" # wallet versions as 1.x
+    group: app
+    dependsOn: [web-sdk, guardian]
+    detectors:
+      - type: github-release
+      - type: npm-dep
+        dependency: "@miden-sdk/miden-sdk"
+      - type: npm-dep
+        dependency: "@openzeppelin/guardian-client"
+        targetTrain: "0.17"
+
+  # ---- DevEx surfaces (rolled up into one stage in the UI) ----
+
+  - id: docs
+    label: "Docs"
+    repo: 0xMiden/docs
+    branch: main
+    owner: "Brian"
+    expectedVersion: "0.16"
+    group: devex
+    dependsOn: [rust-sdk, web-sdk]
+    detectors:
+      - type: yaml-manifest
+        path: .release/release-manifest.yml
+        key: next_version
+
+  - id: tutorials
+    label: "Tutorials"
+    repo: 0xMiden/tutorials
+    branch: main
+    owner: "Philipp"
+    expectedVersion: "0.16"
+    group: devex
+    dependsOn: [rust-sdk, web-sdk]
+    detectors:
+      - type: cargo-dep
+        path: rust-client/Cargo.toml
+        dependency: miden-client
+      - type: npm-dep
+        path: web-client/package.json
+        dependency: "@miden-sdk/miden-sdk"
+
+  - id: frontend-template
+    label: "Frontend template"
+    repo: 0xMiden/frontend-template
+    branch: main
+    owner: "Philipp"
+    expectedVersion: "0.16"
+    group: devex
+    dependsOn: [web-sdk]
+    detectors:
+      - type: npm-dep
+        dependency: "@miden-sdk/miden-sdk"
+
+  - id: project-template
+    label: "Project template"
+    repo: 0xMiden/project-template
+    branch: main
+    owner: "Roman"
+    expectedVersion: "0.16"
+    group: devex
+    dependsOn: [rust-sdk]
+    detectors:
+      # Root Cargo.toml has an empty [workspace.dependencies]; the real pins
+      # live in the integration crate.
+      - type: cargo-dep
+        path: integration/Cargo.toml
+        dependency: miden-client
+
+  - id: agentic-template
+    label: "Agentic template"
+    repo: 0xMiden/agentic-template
+    branch: main
+    owner: "Philipp"
+    expectedVersion: "0.16"
+    group: devex
+    dependsOn: [frontend-template, project-template]
+    detectors:
+      # The repo is two git submodules; version detection deferred for v1.
+      - type: manual-override
+        status: not-started
+        note: "Submodules still pin the 0.15-era frontend/project templates; automated submodule tracking deferred."
+        setBy: "Brian"
+        setAt: "2026-08-31"
+
+  - id: midenup
+    label: "midenup"
+    repo: 0xMiden/midenup
+    branch: main
+    owner: "Roman"
+    expectedVersion: "0.16"
+    group: devex
+    dependsOn: [rust-sdk, node]
+    detectors:
+      - type: midenup-channel
+        channel: "0.16.0"
+        component: client
+      - type: midenup-channel
+        channel: "0.16.0"
+        component: node
+
+environments:
+  - id: devnet
+    label: "DevNet"
+    statusUrl: https://status.devnet.miden.io/status
+    expectedComponentId: node
+  - id: testnet
+    label: "Testnet"
+    statusUrl: https://status.testnet.miden.io/status
+    expectedComponentId: node
