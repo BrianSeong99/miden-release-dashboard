@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-sans);
+  --font-mono: var(--font-mono);
+
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-border: var(--border);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-ring: var(--ring);
+  --color-brand: var(--brand);
+
+  /* Four traffic-light tones; each maps to exactly one meaning on this
+     dashboard (PRD section 5B). Values follow guardian-dashboard's AA-checked
+     light palette: hue held, lightness set to clear 4.5:1 on the card fill. */
+  --color-tone-green: var(--tone-green);
+  --color-tone-amber: var(--tone-amber);
+  --color-tone-red: var(--tone-red);
+  --color-tone-gray: var(--tone-gray);
+  --color-tone-green-bg: var(--tone-green-bg);
+  --color-tone-amber-bg: var(--tone-amber-bg);
+  --color-tone-red-bg: var(--tone-red-bg);
+  --color-tone-gray-bg: var(--tone-gray-bg);
+
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.4);
+}
+
+:root {
+  /* Miden light palette, following guardian-dashboard: the page is the
+     lightest ground and surfaces sit INTO it. Raw #ff5500 stays in the logo
+     mark; #bc3400 is the accessible accent (4.99:1 on a card). */
+  --background: #f7f6f4;
+  --foreground: #1a1d21;
+  --card: #ffffff;
+  --card-foreground: #1a1d21;
+  --muted: #efeeec;
+  --muted-foreground: #656565;
+  --border: #dcd9d4;
+  --primary: #bc3400;
+  --primary-foreground: #ffffff;
+  --ring: #bc3400;
+  --brand: #bc3400;
+  --radius: 0.625rem;
+
+  --tone-green: #00753b;
+  --tone-amber: #9a5b00;
+  --tone-red: #ce0007;
+  --tone-gray: #64646e;
+  --tone-green-bg: #e6f2ec;
+  --tone-amber-bg: #f8efe0;
+  --tone-red-bg: #fbe9e9;
+  --tone-gray-bg: #eeeef0;
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: color-mix(in oklab, var(--ring) 50%, transparent);
+  }
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+  }
+}
