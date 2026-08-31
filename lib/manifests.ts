@@ -1,0 +1,135 @@
+import { parse as parseToml } from "smol-toml";
+import { parse as parseYaml } from "yaml";
+import { err, ok } from "./fetch-utils";
+import { blobUrl, getRawFile } from "./github";
+import type { Detector } from "./schema";
+import type { DetectedVersion, Result } from "./types";
+
+// Detector runners: given a repo/branch and a detector config, extract the
+// dependency version that proves compatibility. Parsing failures return
+// Result errors — never throw (PRD section 12).
+
+function depString(entry: unknown): string | null {
+  // Cargo dependencies are either "0.16.0-rc.4" or { version = "…", … }.
+  if (typeof entry === "string") return entry;
+  if (typeof entry === "object" && entry !== null) {
+    const v = (entry as Record<string, unknown>).version;
+    if (typeof v === "string") return v;
+  }
+  return null;
+}
+
+export function extractCargoDependency(toml: string, dependency: string): string | null {
+  let doc: Record<string, unknown>;
+  try {
+    doc = parseToml(toml) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  // [workspace.dependencies] first (org convention), then [dependencies].
+  const workspace = doc.workspace as Record<string, unknown> | undefined;
+  const wsDeps = workspace?.dependencies as Record<string, unknown> | undefined;
+  const found = depString(wsDeps?.[dependency]);
+  if (found !== null) return found;
+  const deps = doc.dependencies as Record<string, unknown> | undefined;
+  return depString(deps?.[dependency]);
+}
+
+export function extractNpmDependency(json: string, dependency: string): string | null {
+  let doc: Record<string, unknown>;
+  try {
+    doc = JSON.parse(json) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+  for (const key of ["dependencies", "devDependencies"]) {
+    const deps = doc[key] as Record<string, unknown> | undefined;
+    const v = deps?.[dependency];
+    if (typeof v === "string") return v;
+  }
+  return null;
+}
+
+export function extractYamlKey(text: string, key: string): string | null {
+  let doc: unknown;
+  try {
+    doc = parseYaml(text);
+  } catch {
+    return null;
+  }
+  if (typeof doc !== "object" || doc === null) return null;
+  const v = (doc as Record<string, unknown>)[key];
+  return typeof v === "string" || typeof v === "number" ? String(v) : null;
+}
+
+export function extractMidenupChannelComponent(
+  json: string,
+  channel: string,
+  component: string,
+): string | null {
+  let doc: unknown;
+  try {
+    doc = JSON.parse(json);
+  } catch {
+    return null;
+  }
+  const channels = (doc as { channels?: unknown }).channels;
+  if (!Array.isArray(channels)) return null;
+  const ch = channels.find(
+    (c: unknown) => typeof c === "object" && c !== null && (c as { name?: unknown }).name === channel,
+  ) as { components?: unknown } | undefined;
+  if (!ch || !Array.isArray(ch.components)) return null;
+  const comp = ch.components.find(
+    (c: unknown) => typeof c === "object" && c !== null && (c as { name?: unknown }).name === component,
+  ) as { version?: { version?: unknown } } | undefined;
+  const v = comp?.version?.version;
+  return typeof v === "string" ? v : null;
+}
+
+type DepDetector = Extract<
+  Detector,
+  { type: "cargo-dep" | "npm-dep" | "yaml-manifest" | "midenup-channel" }
+>;
+
+export function detectorLabel(d: DepDetector): string {
+  switch (d.type) {
+    case "cargo-dep":
+      return `${d.dependency} (${d.path})`;
+    case "npm-dep":
+      return `${d.dependency} (${d.path})`;
+    case "yaml-manifest":
+      return `${d.key} (${d.path})`;
+    case "midenup-channel":
+      return `channel ${d.channel} → ${d.component}`;
+  }
+}
+
+/** Run one dependency detector against the repo's monitored branch. */
+export async function runDepDetector(
+  repo: string,
+  branch: string,
+  detector: DepDetector,
+): Promise<Result<DetectedVersion>> {
+  const file = await getRawFile(repo, detector.path, branch);
+  if (!file.ok) return err(file.error);
+  const url = blobUrl(repo, branch, detector.path);
+  let raw: string | null;
+  switch (detector.type) {
+    case "cargo-dep":
+      raw = extractCargoDependency(file.value, detector.dependency);
+      break;
+    case "npm-dep":
+      raw = extractNpmDependency(file.value, detector.dependency);
+      break;
+    case "yaml-manifest":
+      raw = extractYamlKey(file.value, detector.key);
+      break;
+    case "midenup-channel":
+      raw = extractMidenupChannelComponent(file.value, detector.channel, detector.component);
+      break;
+  }
+  if (raw === null) {
+    return err(`${detectorLabel(detector)} not found in ${repo}/${detector.path}@${branch}`);
+  }
+  return ok({ raw, source: detectorLabel(detector), url });
+}
