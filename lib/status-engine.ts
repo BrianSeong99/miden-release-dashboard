@@ -5,7 +5,6 @@ import {
   isPrerelease,
   normalizeVersion,
   onTrain,
-  sameVersion,
 } from "./semver-utils";
 import type {
   BlockerView,
@@ -51,6 +50,7 @@ export const ENV_TONE: Record<EnvStatusId, Tone> = {
   current: "green",
   partial: "amber",
   behind: "amber",
+  ahead: "green",
   unknown: "gray",
 };
 
@@ -89,13 +89,16 @@ function toFindings(e: ComponentEvidence): DepFinding[] {
     if (detector.type === "github-release" || detector.type === "migration-pr" || detector.type === "manual-override") continue;
     const targetTrain = depDetectorTrain(detector, e.releaseTargetVersion);
     if (result.ok) {
-      const normalized = normalizeVersion(result.value.raw);
+      const normalized = result.value.raw !== null ? normalizeVersion(result.value.raw) : null;
       findings.push({
         label: result.value.source,
         version: normalized,
         raw: result.value.raw,
         targetTrain,
-        onTarget: normalized !== null ? onTrain(normalized, targetTrain) : null,
+        // Absent (raw null) is definitively not on target; an unparseable
+        // version string yields no judgement.
+        onTarget:
+          result.value.raw === null ? false : normalized !== null ? onTrain(normalized, targetTrain) : null,
         url: result.value.url,
       });
     } else {
@@ -122,6 +125,8 @@ function detectorSummary(d: Detector): string {
       return `${d.key} (${d.path})`;
     case "midenup-channel":
       return `channel ${d.channel} → ${d.component}`;
+    case "submodule-dep":
+      return `${d.dependency} (${d.submodulePath} submodule)`;
     default:
       return d.type;
   }
@@ -131,8 +136,10 @@ function pickReleases(releases: GhRelease[], expected: string) {
   const sorted = [...releases].sort((a, b) => compareDesc(a.tagName, b.tagName));
   const latestStable = sorted.find((r) => !r.prerelease && !isPrerelease(r.tagName)) ?? null;
   const latestRc = sorted.find((r) => r.prerelease || isPrerelease(r.tagName)) ?? null;
+  // A stable anywhere on the target train proves the release shipped
+  // (patch releases after the .0 must not un-ship it).
   const stableMatch = sorted.find(
-    (r) => !r.prerelease && !isPrerelease(r.tagName) && sameVersion(r.tagName, expected),
+    (r) => !r.prerelease && !isPrerelease(r.tagName) && onTrain(r.tagName, expected),
   );
   const rcOnTrain = sorted.find(
     (r) => (r.prerelease || isPrerelease(r.tagName)) && onTrain(r.tagName, expected),
@@ -156,6 +163,11 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     ? normalizeVersion(releaseInfo.latestStable.tagName)
     : null;
   const latestRc = releaseInfo?.latestRc ? normalizeVersion(releaseInfo.latestRc.tagName) : null;
+  const matchedRelease = releaseInfo?.stableMatch
+    ? normalizeVersion(releaseInfo.stableMatch.tagName)
+    : releaseInfo?.rcOnTrain
+      ? normalizeVersion(releaseInfo.rcOnTrain.tagName)
+      : null;
   if (releaseInfo?.latestStable) {
     evidence.push({ label: `release ${releaseInfo.latestStable.tagName}`, url: releaseInfo.latestStable.htmlUrl });
   }
@@ -174,6 +186,7 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     dependsOn: c.dependsOn,
     latestStable,
     latestRc,
+    matchedRelease,
     deps,
     evidence,
     blockerIds: e.blockers.map((b) => b.id),
@@ -245,12 +258,24 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     );
   }
 
-  // 7. Not started — positive evidence of only previous-train versions.
+  // 7. Not started — positive evidence of only previous-train versions,
+  //    or a healthy release list with nothing on the target train yet
+  //    (the future-release view: releases exist, none for this train).
   if (
     succeeded.length > 0 &&
-    succeeded.every((f) => f.version !== null && beforeTrain(f.version, f.targetTrain))
+    succeeded.every(
+      (f) => f.version === null || beforeTrain(f.version, f.targetTrain),
+    )
   ) {
-    return done("not-started", "Monitored dependencies still point at a previous release");
+    return done(
+      "not-started",
+      succeeded.some((f) => f.version === null)
+        ? "Target dependency versions are absent"
+        : "Monitored dependencies still point at a previous release",
+    );
+  }
+  if (succeeded.length === 0 && releaseInfo && e.releases?.ok) {
+    return done("not-started", `No release on the ${c.expectedVersion} train yet`);
   }
 
   // 8. Unknown — the evidence needed to decide is missing.
@@ -317,6 +342,14 @@ export function deriveEnvStatus(input: {
     return { ...base, status: "unknown", tone: "gray", reason: "No node version reported" };
   }
   if (!onTrain(nodeVersion, expectedVersion)) {
+    if (!beforeTrain(nodeVersion, expectedVersion)) {
+      return {
+        ...base,
+        status: "ahead",
+        tone: ENV_TONE.ahead,
+        reason: `Node runs ${nodeVersion}, newer than the ${expectedVersion} train`,
+      };
+    }
     return {
       ...base,
       status: "behind",
@@ -365,7 +398,8 @@ export function deriveReadiness(
   const allReady =
     releaseChain.length > 0 &&
     readyCount === releaseChain.length &&
-    environments.every((e) => e.status === "current");
+    // "ahead" means the release is deployed and already surpassed there.
+    environments.every((e) => e.status === "current" || e.status === "ahead");
   return {
     level: anyBlocked ? "blocked" : allReady ? "ready" : "in-progress",
     readyCount,

@@ -1,7 +1,7 @@
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 import { err, ok } from "./fetch-utils";
-import { blobUrl, getRawFile } from "./github";
+import { blobUrl, getRawFile, getSubmodulePointer } from "./github";
 import type { Detector } from "./schema";
 import type { DetectedVersion, Result } from "./types";
 
@@ -88,7 +88,7 @@ export function extractMidenupChannelComponent(
 
 type DepDetector = Extract<
   Detector,
-  { type: "cargo-dep" | "npm-dep" | "yaml-manifest" | "midenup-channel" }
+  { type: "cargo-dep" | "npm-dep" | "yaml-manifest" | "midenup-channel" | "submodule-dep" }
 >;
 
 export function detectorLabel(d: DepDetector): string {
@@ -101,7 +101,32 @@ export function detectorLabel(d: DepDetector): string {
       return `${d.key} (${d.path})`;
     case "midenup-channel":
       return `channel ${d.channel} → ${d.component}`;
+    case "submodule-dep":
+      return `${d.dependency} (${d.submodulePath} submodule)`;
   }
+}
+
+/** Resolve a git submodule pointer, then read a manifest at that pinned
+ * commit in the submodule's source repo. Fully automated — no manual
+ * override needed for template repos composed of submodules. */
+async function runSubmoduleDetector(
+  repo: string,
+  branch: string,
+  detector: Extract<DepDetector, { type: "submodule-dep" }>,
+): Promise<Result<DetectedVersion>> {
+  const pointer = await getSubmodulePointer(repo, detector.submodulePath, branch);
+  if (!pointer.ok) return pointer as Result<DetectedVersion>;
+  const file = await getRawFile(detector.sourceRepo, detector.path, pointer.value);
+  if (!file.ok) return file as unknown as Result<DetectedVersion>;
+  const raw =
+    detector.manifest === "cargo"
+      ? extractCargoDependency(file.value, detector.dependency)
+      : extractNpmDependency(file.value, detector.dependency);
+  return ok({
+    raw,
+    source: detectorLabel(detector),
+    url: blobUrl(detector.sourceRepo, pointer.value, detector.path),
+  });
 }
 
 /** Run one dependency detector against the repo's monitored branch. */
@@ -110,6 +135,7 @@ export async function runDepDetector(
   branch: string,
   detector: DepDetector,
 ): Promise<Result<DetectedVersion>> {
+  if (detector.type === "submodule-dep") return runSubmoduleDetector(repo, branch, detector);
   const file = await getRawFile(repo, detector.path, branch);
   if (!file.ok) return err(file.error);
   const url = blobUrl(repo, branch, detector.path);
@@ -128,8 +154,7 @@ export async function runDepDetector(
       raw = extractMidenupChannelComponent(file.value, detector.channel, detector.component);
       break;
   }
-  if (raw === null) {
-    return err(`${detectorLabel(detector)} not found in ${repo}/${detector.path}@${branch}`);
-  }
+  // raw === null: the manifest was fetched but the target is absent — that is
+  // positive "not started" evidence, not a failure.
   return ok({ raw, source: detectorLabel(detector), url });
 }

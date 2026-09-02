@@ -21,7 +21,7 @@ export const RepoStatusEnum = z.enum([
   "unknown",
 ]);
 
-export const EnvStatusEnum = z.enum(["current", "partial", "behind", "unknown"]);
+export const EnvStatusEnum = z.enum(["current", "partial", "behind", "ahead", "unknown"]);
 
 /** How a dependency version is proven. `targetTrain` overrides the release-wide
  * target for detectors whose upstream runs its own version train (e.g. the
@@ -47,6 +47,17 @@ export const DetectorSchema = z.discriminatedUnion("type", [
     channel: z.string().min(1),
     component: z.string().min(1),
     targetTrain: trainString.optional(),
+  }),
+  z.strictObject({
+    type: z.literal("submodule-dep"),
+    /** Path of the submodule inside the monitored repo, e.g. "frontend-template". */
+    submodulePath: z.string().min(1),
+    /** The submodule's source repository, e.g. "0xMiden/frontend-template". */
+    sourceRepo: z.string().regex(repoPattern),
+    /** Manifest inside the submodule to read at the pinned commit. */
+    manifest: z.enum(["cargo", "npm"]),
+    path: z.string().min(1),
+    ...dep,
   }),
   z.strictObject({ type: z.literal("migration-pr"), number: z.number().int().positive() }),
   z.strictObject({
@@ -90,14 +101,18 @@ export const EnvironmentSchema = z.strictObject({
     .optional(),
 });
 
-export const ReleaseConfigSchema = z.strictObject({
-  release: z.strictObject({
-    name: z.string().min(1),
-    targetVersion: trainString,
-    targetDate: z.iso.date().nullable().default(null),
-  }),
+export const ReleaseSchema = z.strictObject({
+  name: z.string().min(1),
+  targetVersion: trainString,
+  targetDate: z.iso.date().nullable().default(null),
   components: z.array(ComponentSchema).min(1),
+});
+export type ReleaseDefinition = z.infer<typeof ReleaseSchema>;
+
+export const ReleaseConfigSchema = z.strictObject({
+  defaultRelease: trainString,
   environments: z.array(EnvironmentSchema).min(1),
+  releases: z.array(ReleaseSchema).min(1),
 });
 export type ReleaseConfig = z.infer<typeof ReleaseConfigSchema>;
 
@@ -105,6 +120,8 @@ export const BlockerSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/),
   title: z.string().min(1),
   severity: z.enum(["critical", "high", "medium"]),
+  /** Which release train this blocker gates, e.g. "0.16". */
+  release: trainString,
   stage: z.string().min(1),
   blockingDependency: z.string().optional(),
   owner: z.string().min(1, "blocker owner is required"),
@@ -127,6 +144,8 @@ export const PioneerSchema = z.strictObject({
   milestone: z.string().min(1),
   releaseDependency: z.string().min(1),
   status: z.enum(["on-track", "at-risk", "blocked", "done"]),
+  /** Component ids (in the default release) this partner is waiting on. */
+  dependsOn: z.array(z.string()).default([]),
   owner: z.string().min(1),
   nextDecisionDate: z.iso.date(),
   hubUrl: z.url().optional(),
@@ -144,28 +163,81 @@ export interface AppConfig {
   pioneers: PioneerConfig[];
 }
 
+function findCycle(components: { id: string; dependsOn: string[] }[]): string | null {
+  const deps = new Map(components.map((c) => [c.id, c.dependsOn]));
+  const state = new Map<string, "visiting" | "done">();
+  const visit = (id: string, path: string[]): string | null => {
+    if (state.get(id) === "done") return null;
+    if (state.get(id) === "visiting") return [...path, id].join(" -> ");
+    state.set(id, "visiting");
+    for (const dep of deps.get(id) ?? []) {
+      if (!deps.has(dep)) continue;
+      const cycle = visit(dep, [...path, id]);
+      if (cycle) return cycle;
+    }
+    state.set(id, "done");
+    return null;
+  };
+  for (const c of components) {
+    const cycle = visit(c.id, []);
+    if (cycle) return cycle;
+  }
+  return null;
+}
+
 /** Cross-file referential checks. Returns a list of human-readable problems. */
 export function crossValidate(config: AppConfig): string[] {
   const problems: string[] = [];
-  const ids = new Set(config.release.components.map((c) => c.id));
-  const dup = config.release.components
-    .map((c) => c.id)
-    .filter((id, i, all) => all.indexOf(id) !== i);
-  for (const d of new Set(dup)) problems.push(`duplicate component id "${d}"`);
-  for (const c of config.release.components) {
-    for (const dep of c.dependsOn) {
-      if (!ids.has(dep)) problems.push(`component "${c.id}" dependsOn unknown id "${dep}"`);
+  const { releases, environments, defaultRelease } = config.release;
+
+  const versions = releases.map((r) => r.targetVersion);
+  for (const d of new Set(versions.filter((v, i) => versions.indexOf(v) !== i))) {
+    problems.push(`duplicate release "${d}"`);
+  }
+  if (!versions.includes(defaultRelease)) {
+    problems.push(`defaultRelease "${defaultRelease}" is not a declared release`);
+  }
+
+  const idsByRelease = new Map<string, Set<string>>();
+  for (const r of releases) {
+    const ids = new Set(r.components.map((c) => c.id));
+    idsByRelease.set(r.targetVersion, ids);
+    const dup = r.components.map((c) => c.id).filter((id, i, all) => all.indexOf(id) !== i);
+    for (const d of new Set(dup)) problems.push(`release ${r.targetVersion}: duplicate component id "${d}"`);
+    for (const c of r.components) {
+      for (const dep of c.dependsOn) {
+        if (!ids.has(dep)) {
+          problems.push(`release ${r.targetVersion}: component "${c.id}" dependsOn unknown id "${dep}"`);
+        }
+      }
+    }
+    const cycle = findCycle(r.components);
+    if (cycle) problems.push(`release ${r.targetVersion}: dependency cycle ${cycle}`);
+    for (const e of environments) {
+      if (!ids.has(e.expectedComponentId)) {
+        problems.push(`release ${r.targetVersion}: environment "${e.id}" expects unknown component "${e.expectedComponentId}"`);
+      }
     }
   }
-  for (const e of config.release.environments) {
-    if (!ids.has(e.expectedComponentId)) {
-      problems.push(`environment "${e.id}" expects unknown component "${e.expectedComponentId}"`);
-    }
-  }
+
   for (const b of config.blockers) {
-    if (!ids.has(b.stage)) problems.push(`blocker "${b.id}" targets unknown stage "${b.stage}"`);
+    const ids = idsByRelease.get(b.release);
+    if (!ids) {
+      problems.push(`blocker "${b.id}" targets unknown release "${b.release}"`);
+    } else if (!ids.has(b.stage)) {
+      problems.push(`blocker "${b.id}" targets unknown stage "${b.stage}"`);
+    }
   }
   const dupB = config.blockers.map((b) => b.id).filter((id, i, all) => all.indexOf(id) !== i);
   for (const d of new Set(dupB)) problems.push(`duplicate blocker id "${d}"`);
+
+  const defaultIds = idsByRelease.get(defaultRelease) ?? new Set<string>();
+  for (const p of config.pioneers) {
+    for (const dep of p.dependsOn) {
+      if (!defaultIds.has(dep)) {
+        problems.push(`pioneer "${p.partner}" dependsOn unknown component "${dep}"`);
+      }
+    }
+  }
   return problems;
 }

@@ -107,6 +107,27 @@ export async function getIssueState(
   }
 }
 
+/** The commit SHA a git submodule is pinned to on the given ref. */
+export async function getSubmodulePointer(
+  repo: string,
+  path: string,
+  ref: string,
+): Promise<Result<string>> {
+  const url = `${API}/repos/${repo}/contents/${path}?ref=${encodeURIComponent(ref)}`;
+  const res = await safeFetch(url, { headers: headers("application/vnd.github+json") });
+  if (!res.ok) return err(res.error);
+  if (!res.value.ok) return err(await ghError(res.value, `${repo}/${path}@${ref}`));
+  try {
+    const body = (await res.value.json()) as { type?: string; sha?: string };
+    if (body.type !== "submodule" || typeof body.sha !== "string") {
+      return err(`${repo}/${path}@${ref} is not a submodule`);
+    }
+    return ok(body.sha);
+  } catch (e) {
+    return err(`unreadable submodule payload for ${repo}/${path}: ${e instanceof Error ? e.message : e}`);
+  }
+}
+
 export function blobUrl(repo: string, ref: string, path: string): string {
   return `https://github.com/${repo}/blob/${encodeURIComponent(ref)}/${path}`;
 }

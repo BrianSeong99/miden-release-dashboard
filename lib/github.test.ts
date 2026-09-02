@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getIssueState, getRawFile, listReleases } from "./github";
+import { getIssueState, getRawFile, getSubmodulePointer, listReleases } from "./github";
 
 const fixture = (name: string) =>
   fs.readFileSync(path.join(__dirname, "../test/fixtures", name), "utf8");
@@ -74,6 +74,24 @@ describe("getRawFile", () => {
     expect(res.ok).toBe(false);
     if (res.ok) return;
     expect(res.error).toContain("404");
+  });
+});
+
+describe("getSubmodulePointer", () => {
+  it("returns the pinned commit sha for a submodule entry", async () => {
+    mockFetch(JSON.stringify({ type: "submodule", sha: "c5c3ad1e71b8213cc24397fcbe8eeed93ea00c17" }));
+    const res = await getSubmodulePointer("0xMiden/agentic-template", "frontend-template", "main");
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value).toBe("c5c3ad1e71b8213cc24397fcbe8eeed93ea00c17");
+  });
+
+  it("rejects paths that are not submodules", async () => {
+    mockFetch(JSON.stringify({ type: "file", sha: "abc" }));
+    const res = await getSubmodulePointer("0xMiden/agentic-template", "README.md", "main");
+    expect(res.ok).toBe(false);
+    if (res.ok) return;
+    expect(res.error).toContain("not a submodule");
   });
 });
 

@@ -6,6 +6,7 @@ pioneers:
   - partner: NubX
     milestone: "TODO: fill current milestone from Pioneers Hub"
     releaseDependency: "Web SDK 0.16 stable"
+    dependsOn: [web-sdk]
     status: on-track
     owner: "Brian"
     nextDecisionDate: "2026-09-07"
@@ -13,6 +14,7 @@ pioneers:
   - partner: Darwin
     milestone: "TODO: fill current milestone from Pioneers Hub"
     releaseDependency: "Web SDK 0.16 stable"
+    dependsOn: [web-sdk]
     status: on-track
     owner: "Brian"
     nextDecisionDate: "2026-09-07"
@@ -20,6 +22,7 @@ pioneers:
   - partner: Epoch
     milestone: "TODO: fill current milestone from Pioneers Hub"
     releaseDependency: "Rust SDK 0.16 stable"
+    dependsOn: [rust-sdk]
     status: on-track
     owner: "Brian"
     nextDecisionDate: "2026-09-07"
@@ -27,6 +30,7 @@ pioneers:
   - partner: Near
     milestone: "TODO: fill current milestone from Pioneers Hub"
     releaseDependency: "Node 0.16 on Testnet"
+    dependsOn: [node]
     status: on-track
     owner: "Brian"
     nextDecisionDate: "2026-09-07"
@@ -34,6 +38,7 @@ pioneers:
   - partner: Lumina
     milestone: "TODO: fill current milestone from Pioneers Hub"
     releaseDependency: "Guardian 0.17 stable"
+    dependsOn: [guardian]
     status: on-track
     owner: "Brian"
     nextDecisionDate: "2026-09-07"

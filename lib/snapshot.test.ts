@@ -29,6 +29,13 @@ function route(url: string): { body: string; status: number } {
   if (u.pathname.includes("/contents/")) {
     const file = decodeURIComponent(u.pathname.split("/contents/")[1]);
     const repo = u.pathname.split("/repos/")[1].split("/contents/")[0];
+    if (repo === "0xMiden/agentic-template") {
+      // submodule pointer lookup
+      return {
+        body: JSON.stringify({ type: "submodule", sha: "c5c3ad1e71b8213cc24397fcbe8eeed93ea00c17" }),
+        status: 200,
+      };
+    }
     if (repo === "0xMiden/protocol") return { body: fixture("protocol-cargo.toml"), status: 200 };
     if (repo === "0xMiden/node") return { body: fixture("node-cargo.toml"), status: 200 };
     if (repo === "0xMiden/wallet") return { body: fixture("wallet-package.json"), status: 200 };
@@ -65,6 +72,8 @@ describe("buildSnapshot", () => {
     const snap = await buildSnapshot();
 
     expect(snap.release.name).toBe("Miden v0.16");
+    expect(snap.releases.map((r) => r.targetVersion)).toEqual(["0.15", "0.16", "0.17"]);
+    expect(snap.releases.find((r) => r.isDefault)?.targetVersion).toBe("0.16");
     expect(snap.components).toHaveLength(13);
     expect(snap.blockers).toHaveLength(10);
     expect(snap.pioneers).toHaveLength(5);
@@ -78,14 +87,32 @@ describe("buildSnapshot", () => {
     expect(byId.get("node")?.status).toBe("rc-released");
     // Docs manifest says next_version 0.16 → compatible.
     expect(byId.get("docs")?.status).toBe("compatible");
-    // Manual override renders as manual, never as automated.
-    expect(byId.get("agentic-template")?.manual).toBe(true);
+    // Agentic template is fully automated via submodule detectors now.
+    expect(byId.get("agentic-template")?.manual).toBe(false);
+    expect(byId.get("agentic-template")?.status).toBe("compatible");
     // Environments: devnet on the 0.16 train, testnet behind (recorded payloads).
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
     expect(envs).toEqual({ devnet: "current", testnet: "behind" });
     // Readiness reflects the blockers.
     expect(snap.readiness.level).toBe("blocked");
     expect(snap.readiness.criticalBlockerCount).toBe(5);
+  });
+
+  it("builds a past-release view: blockers filtered out, devnet reads ahead", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(async (url: string) => {
+        const { body, status } = route(url);
+        return new Response(body, { status });
+      }),
+    );
+    const snap = await buildSnapshot("0.15");
+    expect(snap.release.targetVersion).toBe("0.15");
+    expect(snap.blockers).toHaveLength(0); // all seed blockers gate 0.16
+    const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
+    // Recorded payloads: testnet runs 0.15.0 (current for this view), devnet
+    // runs 0.16.0-rc.3 (a newer train -> ahead, not "behind").
+    expect(envs).toEqual({ devnet: "ahead", testnet: "current" });
   });
 
   it("degrades every failed source to Unknown without breaking the page", async () => {

@@ -11,7 +11,7 @@ export type RepoStatusId =
   | "blocked"
   | "unknown";
 
-export type EnvStatusId = "current" | "partial" | "behind" | "unknown";
+export type EnvStatusId = "current" | "partial" | "behind" | "ahead" | "unknown";
 
 /** Traffic-light tone every status maps onto (PRD section 5B). */
 export type Tone = "green" | "amber" | "red" | "gray";
@@ -39,8 +39,10 @@ export interface IssueLiveState {
 
 /** A version a detector extracted, with provenance for the evidence link. */
 export interface DetectedVersion {
-  /** Raw string as found in the manifest (may carry `=` pins, bare "0.15"…). */
-  raw: string;
+  /** Raw string as found in the manifest (may carry `=` pins, bare "0.15"…).
+   * null means the manifest was fetched but the dependency/key/channel is
+   * ABSENT — positive evidence of "not started" (PRD section 6). */
+  raw: string | null;
   /** Where it came from, e.g. "Cargo.toml → miden-core". */
   source: string;
   /** Browsable evidence URL (blob on the monitored branch). */
@@ -96,6 +98,8 @@ export interface ComponentStatus {
   reason: string;
   latestStable: string | null;
   latestRc: string | null;
+  /** The release/RC on THIS view's target train, when one exists. */
+  matchedRelease: string | null;
   deps: DepFinding[];
   evidence: { label: string; url: string }[];
   blockerIds: string[];
@@ -146,9 +150,17 @@ export interface Readiness {
   criticalBlockerCount: number;
 }
 
+export interface ReleaseOption {
+  name: string;
+  targetVersion: string;
+  isDefault: boolean;
+}
+
 export interface DashboardSnapshot {
   generatedAt: string;
   release: { name: string; targetVersion: string; targetDate: string | null };
+  /** Every release the dashboard can render, for the switcher. */
+  releases: ReleaseOption[];
   readiness: Readiness;
   components: ComponentStatus[];
   devexRollup: RollupStatus;
@@ -161,6 +173,8 @@ export interface PioneerView {
   partner: string;
   milestone: string;
   releaseDependency: string;
+  /** Component ids this partner waits on (drawn as DAG edges). */
+  dependsOn: string[];
   status: "on-track" | "at-risk" | "blocked" | "done";
   tone: Tone;
   owner: string;

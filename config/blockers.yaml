@@ -10,6 +10,7 @@ blockers:
   - id: protocol-fee-guarded-multisig
     title: "Guarded multisig auth must pay the transaction fee (0.16 backport)"
     severity: critical
+    release: "0.16"
     stage: protocol
     blockingDependency: "Guardian accounts paying fees"
     owner: "Wiktor"
@@ -20,6 +21,7 @@ blockers:
   - id: protocol-faucet-fee-asset
     title: "User fungible faucets must be able to hold the native fee asset"
     severity: high
+    release: "0.16"
     stage: protocol
     blockingDependency: "User faucets holding native fee assets"
     owner: "Wiktor"
@@ -30,6 +32,7 @@ blockers:
   - id: protocol-fee-conversion-drain
     title: "AuthMultisig: unbounded fee conversion lets approvers drain the vault"
     severity: critical
+    release: "0.16"
     stage: protocol
     blockingDependency: "Fee security sign-off for 0.16"
     owner: "mmagician"
@@ -40,6 +43,7 @@ blockers:
   - id: protocol-sponsorship-outflow
     title: "Reduced-quorum vault drain: pay_fee sponsorship outflow is uncapped"
     severity: critical
+    release: "0.16"
     stage: protocol
     blockingDependency: "Fee security sign-off for 0.16"
     owner: "mmagician"
@@ -50,6 +54,7 @@ blockers:
   - id: node-batch-fees
     title: "Node: support batch fee handling"
     severity: high
+    release: "0.16"
     stage: node
     blockingDependency: "protocol fee model"
     owner: "mmagician"
@@ -60,6 +65,7 @@ blockers:
   - id: rust-sdk-fee-conversion-args
     title: "Rust SDK: accept fee conversion info on guarded multisig accounts"
     severity: high
+    release: "0.16"
     stage: rust-sdk
     blockingDependency: "protocol#3765"
     owner: "Wiktor"
@@ -70,6 +76,7 @@ blockers:
   - id: rust-sdk-fee-funded-wallets
     title: "Rust SDK test-node: emit MIDEN-funded genesis wallets when fees are enabled"
     severity: high
+    release: "0.16"
     stage: rust-sdk
     blockingDependency: "downstream fee testing"
     owner: "Wiktor"
@@ -80,6 +87,7 @@ blockers:
   - id: web-sdk-fee-conversion-args
     title: "Web SDK: commit fee conversion info to transaction auth args"
     severity: high
+    release: "0.16"
     stage: web-sdk
     blockingDependency: "protocol#3765"
     owner: "Wiktor"
@@ -90,6 +98,7 @@ blockers:
   - id: wallet-fees-every-path
     title: "Wallet: pay transaction fees on every path, proven in CI"
     severity: critical
+    release: "0.16"
     stage: wallet
     blockingDependency: "SDK fee-conversion support"
     owner: "Wiktor"
@@ -100,6 +109,7 @@ blockers:
   - id: wallet-guardian-recovery-lockout
     title: "Seed-recovered Guardian account can be permanently locked behind its own rotation gate"
     severity: critical
+    release: "0.16"
     stage: wallet
     blockingDependency: "Guardian recovery flow"
     owner: "Wiktor"

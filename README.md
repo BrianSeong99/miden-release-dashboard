@@ -2,8 +2,9 @@
 
 Internal dashboard answering **"where is the next Miden release across the dependency chain?"**
 — automated GitHub + network monitoring for VM → Protocol → Node → SDKs → Guardian → Wallet →
-DevEx, with DevNet/Testnet deployment visibility, curated critical blockers, and launch-critical
-Pioneers.
+DevEx → Pioneers, rendered as a node-and-edge dependency graph, with DevNet/Testnet deployment
+visibility, curated critical blockers, and launch-critical Pioneers. A release dropdown switches
+between the trains declared in `config/release.yaml` (past, current and upcoming).
 
 ## How data flows
 

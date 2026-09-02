@@ -105,9 +105,17 @@ describe("deriveComponentStatus precedence", () => {
     expect(s.status).toBe("stable-released");
   });
 
-  it("stable release must match the expected version exactly", () => {
+  it("a stable on a previous train does not count; the release list alone reads not-started", () => {
     const s = deriveComponentStatus(evidence({ releases: okR([release("v0.15.2", false)]) }));
-    expect(s.status).not.toBe("stable-released");
+    expect(s.status).toBe("not-started");
+    expect(s.reason).toContain("0.16.0");
+  });
+
+  it("any stable on the target train proves the release shipped (patches included)", () => {
+    const s = deriveComponentStatus(
+      evidence({ releases: okR([release("v0.16.2", false), release("v0.16.0-rc.3", true)]) }),
+    );
+    expect(s.status).toBe("stable-released");
   });
 
   it("rc-released: on-train prerelease with on-train deps (exact-pin rc.4)", () => {
@@ -189,6 +197,18 @@ describe("deriveComponentStatus precedence", () => {
     expect(s.status).toBe("rc-released");
   });
 
+  it("absent dependencies are positive not-started evidence (future channels)", () => {
+    const s = deriveComponentStatus(
+      evidence({
+        depFindings: [
+          { detector: cargoDep("miden-client"), result: okR({ raw: null, source: "channel 0.17.0 \u2192 client", url: "https://x" }) },
+        ],
+      }),
+    );
+    expect(s.status).toBe("not-started");
+    expect(s.reason).toContain("absent");
+  });
+
   it("not-started needs positive evidence of previous-train versions", () => {
     const s = deriveComponentStatus(
       evidence({
@@ -241,6 +261,11 @@ describe("deriveEnvStatus", () => {
       ]),
     });
     expect(r.status).toBe("partial");
+  });
+  it("ahead when the environment runs a newer train than the viewed release", () => {
+    const r = deriveEnvStatus({ ...base, expectedVersion: "0.15.0", snapshot: snap("0.16.0-rc.3") });
+    expect(r.status).toBe("ahead");
+    expect(r.reason).toContain("newer");
   });
   it("unknown on fetch failure, with the error surfaced", () => {
     const r = deriveEnvStatus({ ...base, snapshot: errR("boom") });

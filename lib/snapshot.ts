@@ -34,19 +34,28 @@ const PIONEER_TONE: Record<PioneerView["status"], Tone> = {
 
 const isDepDetector = (
   d: Detector,
-): d is Extract<Detector, { type: "cargo-dep" | "npm-dep" | "yaml-manifest" | "midenup-channel" }> =>
+): d is Extract<
+  Detector,
+  { type: "cargo-dep" | "npm-dep" | "yaml-manifest" | "midenup-channel" | "submodule-dep" }
+> =>
   d.type === "cargo-dep" ||
   d.type === "npm-dep" ||
   d.type === "yaml-manifest" ||
-  d.type === "midenup-channel";
+  d.type === "midenup-channel" ||
+  d.type === "submodule-dep";
 
-export async function buildSnapshot(): Promise<DashboardSnapshot> {
+export async function buildSnapshot(releaseVersion?: string): Promise<DashboardSnapshot> {
   const config = loadConfig();
-  const { release } = config;
+  const { defaultRelease, environments: envConfigs, releases } = config.release;
+  const release =
+    releases.find((r) => r.targetVersion === releaseVersion) ??
+    releases.find((r) => r.targetVersion === defaultRelease) ??
+    releases[0];
+  const releaseBlockers = config.blockers.filter((b) => b.release === release.targetVersion);
 
   // ---- Blockers first: their live state feeds the component derivation. ----
   const blockerViews: BlockerView[] = await Promise.all(
-    config.blockers.map(async (b): Promise<BlockerView> => {
+    releaseBlockers.map(async (b): Promise<BlockerView> => {
       const live = await getIssueState(b.github.repo, b.github.number);
       return {
         id: b.id,
@@ -105,14 +114,14 @@ export async function buildSnapshot(): Promise<DashboardSnapshot> {
         depFindings: depFindings as Array<{ detector: Detector; result: Result<DetectedVersion> }>,
         migrationPrOpen,
         blockers: blockersByStage.get(c.id) ?? [],
-        releaseTargetVersion: release.release.targetVersion,
+        releaseTargetVersion: release.targetVersion,
       });
     }),
   );
 
   // ---- Environments. ----
   const environments = await Promise.all(
-    release.environments.map(async (e) => {
+    envConfigs.map(async (e) => {
       const expected = release.components.find((c) => c.id === e.expectedComponentId);
       const snapshot = await fetchEnvSnapshot(e.statusUrl);
       return deriveEnvStatus({
@@ -120,7 +129,7 @@ export async function buildSnapshot(): Promise<DashboardSnapshot> {
         label: e.label,
         statusUrl: e.statusUrl,
         snapshot,
-        expectedVersion: expected?.expectedVersion ?? release.release.targetVersion,
+        expectedVersion: expected?.expectedVersion ?? release.targetVersion,
         manualOverride: e.manualOverride,
       });
     }),
@@ -134,10 +143,15 @@ export async function buildSnapshot(): Promise<DashboardSnapshot> {
   return {
     generatedAt: new Date().toISOString(),
     release: {
-      name: release.release.name,
-      targetVersion: release.release.targetVersion,
-      targetDate: release.release.targetDate,
+      name: release.name,
+      targetVersion: release.targetVersion,
+      targetDate: release.targetDate,
     },
+    releases: releases.map((r) => ({
+      name: r.name,
+      targetVersion: r.targetVersion,
+      isDefault: r.targetVersion === defaultRelease,
+    })),
     readiness: deriveReadiness(components, environments, openCritical),
     components,
     devexRollup: deriveDevexRollup(devexChildren),
@@ -147,7 +161,17 @@ export async function buildSnapshot(): Promise<DashboardSnapshot> {
   };
 }
 
-/** The shared 5-minute cache both the page and /api/status read through. */
-export const getSnapshot = unstable_cache(buildSnapshot, ["dashboard-snapshot"], {
-  revalidate: 300,
-});
+/** The shared 5-minute cache both the page and /api/status read through —
+ * one entry per release so switching versions never evicts the others. */
+const cachedByRelease = new Map<string, () => Promise<DashboardSnapshot>>();
+export function getSnapshot(releaseVersion?: string): Promise<DashboardSnapshot> {
+  const key = releaseVersion ?? "default";
+  let cached = cachedByRelease.get(key);
+  if (!cached) {
+    cached = unstable_cache(() => buildSnapshot(releaseVersion), ["dashboard-snapshot", key], {
+      revalidate: 300,
+    });
+    cachedByRelease.set(key, cached);
+  }
+  return cached();
+}

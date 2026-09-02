@@ -4,8 +4,9 @@ import { loadConfig } from "../lib/config";
 
 try {
   const config = loadConfig();
+  const releases = config.release.releases.map((r) => r.targetVersion).join(", ");
   console.log(
-    `config OK — ${config.release.components.length} components, ` +
+    `config OK — releases [${releases}], ` +
       `${config.blockers.length} blockers, ${config.pioneers.length} pioneers`,
   );
 } catch (e) {
