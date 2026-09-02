@@ -1,6 +1,6 @@
 import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ComponentStatus, PioneerView, RollupStatus } from "@/lib/types";
+import type { ComponentStatus, GroupRollupView } from "@/lib/types";
 import { DependencyDag } from "./dependency-dag";
 
 const comp = (
@@ -24,6 +24,7 @@ const comp = (
   latestStable: "0.15.0",
   latestRc: "0.16.0-rc.3",
   matchedRelease: "0.16.0-rc.3",
+  matchedPublishedAt: null,
   deps: [],
   evidence: [],
   blockerIds: [],
@@ -37,61 +38,56 @@ const components: ComponentStatus[] = [
   comp("node", "chain", ["protocol"]),
   comp("rust-sdk", "sdk", ["protocol", "node"]),
   comp("web-sdk", "sdk", ["protocol", "node"]),
-  comp("guardian", "app", ["rust-sdk", "web-sdk"]),
+  comp("guardian", "app", ["rust-sdk", "web-sdk"], { expectedVersion: "0.17.0" }),
   comp("wallet", "app", ["web-sdk", "guardian"]),
   comp("docs", "devex", ["rust-sdk", "web-sdk"], { status: "compatible", tone: "green" }),
   comp("midenup", "devex", ["rust-sdk", "node"], { status: "compatible", tone: "green" }),
+  comp("playground", "walnut", ["web-sdk"], { status: "migrating", tone: "amber" }),
+  comp("source-verification", "walnut", ["rust-sdk", "web-sdk"], { status: "migrating", tone: "amber" }),
 ];
 
-const rollup: RollupStatus = { status: "compatible", tone: "green", reason: "all good" };
-
-const pioneers: PioneerView[] = [
-  {
-    partner: "NubX", milestone: "m", releaseDependency: "Web SDK", dependsOn: ["web-sdk"],
-    status: "on-track", tone: "green", owner: "Brian", nextDecisionDate: "2026-09-07",
-  },
-  {
-    partner: "Lumina", milestone: "m", releaseDependency: "Guardian", dependsOn: ["guardian"],
-    status: "at-risk", tone: "amber", owner: "Brian", nextDecisionDate: "2026-09-07",
-  },
+const rollups: GroupRollupView[] = [
+  { group: "devex", label: "DevEx", rollup: { status: "compatible", tone: "green", reason: "all good" } },
+  { group: "walnut", label: "Walnut", rollup: { status: "in-progress", tone: "amber", reason: "upgrades open" } },
 ];
 
-const dag = () => <DependencyDag components={components} devexRollup={rollup} pioneers={pioneers} />;
+const dag = () => (
+  <DependencyDag components={components} rollups={rollups} targetVersion="0.16" />
+);
 
 describe("DependencyDag", () => {
-  it("renders one node per chain component plus the DevEx and Pioneers roll-ups", () => {
+  it("renders one node per chain component plus each roll-up group", () => {
     render(dag());
-    for (const id of ["vm", "protocol", "node", "rust-sdk", "web-sdk", "guardian", "wallet", "devex", "pioneers"]) {
+    for (const id of ["vm", "protocol", "node", "rust-sdk", "web-sdk", "guardian", "wallet", "devex", "walnut"]) {
       expect(screen.getByTestId(`dag-node-${id}`)).toBeInTheDocument();
     }
-    // devex children are not their own nodes
+    // group members are not their own nodes
     expect(screen.queryByTestId("dag-node-docs")).not.toBeInTheDocument();
-    // pioneers roll up to the worst status, always marked manual
-    expect(screen.getByTestId("dag-node-pioneers")).toHaveTextContent("At risk");
-    expect(screen.getByTestId("dag-node-pioneers")).toHaveTextContent("manual");
+    expect(screen.queryByTestId("dag-node-playground")).not.toBeInTheDocument();
+    expect(screen.getByTestId("dag-node-walnut")).toHaveTextContent("In progress");
   });
 
-  it("draws one edge per dependsOn relation plus deduped devex edges", () => {
+  it("draws one edge per dependsOn relation plus deduped roll-up edges", () => {
     const { container } = render(dag());
-    // chain edges: vm->protocol, protocol->node, protocol->rust, node->rust,
-    // protocol->web, node->web, rust->guardian, web->guardian, web->wallet,
-    // guardian->wallet = 10; devex: rust, web, node = 3 (docs+midenup deduped);
-    // pioneers: web-sdk, guardian = 2
+    // chain: 10; devex: rust, web, node = 3; walnut: web, rust = 2
     const paths = container.querySelectorAll("svg path:not(marker path)");
     expect(paths.length).toBe(15);
   });
 
-  it("lays nodes out in dependency layers, left to right", () => {
+  it("lays nodes out in dependency layers, roll-ups stacked in a final column", () => {
     render(dag());
     const left = (id: string) =>
       Number.parseFloat(screen.getByTestId(`dag-node-${id}`).style.left);
     expect(left("vm")).toBeLessThan(left("protocol"));
-    expect(left("protocol")).toBeLessThan(left("node"));
-    expect(left("node")).toBeLessThan(left("rust-sdk"));
-    expect(left("rust-sdk")).toBe(left("web-sdk")); // same layer, stacked
-    expect(left("guardian")).toBeLessThan(left("wallet"));
+    expect(left("rust-sdk")).toBe(left("web-sdk"));
     expect(left("wallet")).toBeLessThan(left("devex"));
-    expect(left("devex")).toBeLessThan(left("pioneers"));
+    expect(left("devex")).toBe(left("walnut"));
+  });
+
+  it("spells out a component's own train when it differs from the release", () => {
+    render(dag());
+    expect(screen.getByTestId("dag-node-guardian")).toHaveTextContent("0.17 train");
+    expect(screen.getByTestId("dag-node-node")).not.toHaveTextContent("train");
   });
 
   it("clicking a node opens its detail card; clicking again closes it", () => {
@@ -104,31 +100,17 @@ describe("DependencyDag", () => {
     expect(screen.getByTestId("dag-detail")).toBeEmptyDOMElement();
   });
 
-  it("clicking the DevEx node shows the surfaces list, actually expanded", () => {
+  it("clicking a roll-up node shows its surfaces list, actually expanded", () => {
     render(dag());
-    fireEvent.click(screen.getByTestId("dag-node-devex"));
-    expect(screen.getByTestId("dag-detail")).toHaveTextContent("docs");
-    expect(screen.getByTestId("dag-detail")).toHaveTextContent("midenup");
+    fireEvent.click(screen.getByTestId("dag-node-walnut"));
+    expect(screen.getByTestId("dag-detail")).toHaveTextContent("playground");
+    expect(screen.getByTestId("dag-detail")).toHaveTextContent("source-verification");
     const details = screen.getByTestId("dag-detail").querySelector("details");
     expect(details?.open).toBe(true);
-  });
-
-  it("clicking the Pioneers node shows the partner cards", () => {
-    render(dag());
-    fireEvent.click(screen.getByTestId("dag-node-pioneers"));
-    expect(screen.getByTestId("dag-detail")).toHaveTextContent("NubX");
-    expect(screen.getByTestId("dag-detail")).toHaveTextContent("Lumina");
   });
 
   it("announces dependencies to screen readers", () => {
     render(dag());
     expect(screen.getByTestId("dag-node-wallet")).toHaveTextContent("Depends on web-sdk and guardian");
-  });
-
-  it("shows status tone and version on each node", () => {
-    render(dag());
-    const protocol = screen.getByTestId("dag-node-protocol");
-    expect(protocol).toHaveTextContent("Blocked");
-    expect(protocol).toHaveTextContent("0.16.0-rc.3");
   });
 });

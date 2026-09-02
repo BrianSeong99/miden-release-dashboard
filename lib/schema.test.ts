@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { loadConfig } from "./config";
-import { BlockersFileSchema, BlockerSchema, PioneerSchema, PioneersFileSchema, ReleaseConfigSchema, crossValidate } from "./schema";
+import { BlockersFileSchema, BlockerSchema, ReleaseConfigSchema, crossValidate } from "./schema";
 
 const validBlocker = {
   id: "b1",
@@ -63,7 +63,6 @@ describe("crossValidate", () => {
         BlockerSchema.parse(validBlocker),
         BlockerSchema.parse({ ...validBlocker, id: "b2", release: "9.9" }),
       ],
-      pioneers: [],
     });
     expect(problems.join("\n")).toContain('unknown stage "ghost"');
     expect(problems.join("\n")).toContain('duplicate blocker id "b1"');
@@ -74,43 +73,21 @@ describe("crossValidate", () => {
     const problems = crossValidate({
       release: releaseConfig([component("node", ["vm"]), component("vm", ["node"])]),
       blockers: [],
-      pioneers: [],
     });
     expect(problems.join("\n")).toContain("dependency cycle");
   });
 
-  it("rejects a pioneer waiting on an unknown component", () => {
-    const problems = crossValidate({
-      release: releaseConfig([component("node")]),
-      blockers: [],
-      pioneers: [
-        PioneerSchema.parse({
-          partner: "P",
-          milestone: "m",
-          releaseDependency: "d",
-          dependsOn: ["ghost"],
-          status: "on-track",
-          owner: "o",
-          nextDecisionDate: "2026-09-07",
-        }),
-      ],
-    });
-    expect(problems.join("\n")).toContain('pioneer "P" dependsOn unknown component "ghost"');
-  });
-});
-
-describe("PioneersFileSchema", () => {
-  it("caps the section at 7 partners", () => {
-    const pioneer = {
-      partner: "P",
-      milestone: "m",
-      releaseDependency: "d",
-      status: "on-track",
-      owner: "o",
-      nextDecisionDate: "2026-09-07",
-    };
-    expect(PioneersFileSchema.safeParse({ pioneers: Array(8).fill(pioneer) }).success).toBe(false);
-    expect(PioneersFileSchema.safeParse({ pioneers: Array(5).fill(pioneer) }).success).toBe(true);
+  it("rejects a detector proving an unknown component", () => {
+    const bad = releaseConfig([
+      {
+        ...component("node"),
+        detectors: [
+          { type: "cargo-dep", path: "Cargo.toml", dependency: "miden-protocol", provesComponent: "ghost" },
+        ],
+      },
+    ]);
+    const problems = crossValidate({ release: bad, blockers: [] });
+    expect(problems.join(String.fromCharCode(10))).toContain('proves unknown component "ghost"');
   });
 });
 
@@ -124,7 +101,6 @@ describe("seed config files", () => {
       expect(r.components.length).toBeGreaterThanOrEqual(13);
     }
     expect(config.blockers.length).toBeGreaterThanOrEqual(10);
-    expect(config.pioneers.length).toBeGreaterThanOrEqual(5);
     // Every blocker satisfies the PRD's hard requirements.
     for (const b of config.blockers) {
       expect(b.owner).toBeTruthy();

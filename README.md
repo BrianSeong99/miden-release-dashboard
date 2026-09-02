@@ -1,10 +1,12 @@
 # Miden Release Dashboard
 
 Internal dashboard answering **"where is the next Miden release across the dependency chain?"**
-— automated GitHub + network monitoring for VM → Protocol → Node → SDKs → Guardian → Wallet →
-DevEx → Pioneers, rendered as a node-and-edge dependency graph, with DevNet/Testnet deployment
-visibility, curated critical blockers, and launch-critical Pioneers. A release dropdown switches
-between the trains declared in `config/release.yaml` (past, current and upcoming).
+— automated GitHub + network monitoring for VM → Protocol → Node → SDKs → Guardian (OpenZeppelin)
+→ Wallet, with DevEx and Walnut (Playground, Source verification) as roll-up stages, rendered as
+a node-and-edge dependency graph with DevNet/Testnet deployment visibility and curated release
+blockers. A release dropdown switches between the trains declared in `config/release.yaml`
+(past, current and upcoming). Pins that lag their upstream's newest RC are flagged inline —
+the layered-RC-skew problem the team otherwise reconstructs by hand.
 
 ## How data flows
 
@@ -13,7 +15,7 @@ between the trains declared in `config/release.yaml` (past, current and upcoming
   `status.{devnet,testnet}.miden.io/status`, and live state for each configured blocker.
   Refreshed through one shared 5-minute server cache; the browser polls `/api/status` every
   minute. A failed source degrades that card to **Unknown** — never a guess.
-- **Manual:** `config/blockers.yaml` and `config/pioneers.yaml` (and any `manual-override`
+- **Manual:** `config/blockers.yaml` (and any `manual-override`
   detector). Manual data always renders a **Manual** badge. Edit via PR; the build fails on a
   blocker missing an owner, exit condition or decision date.
 

@@ -70,13 +70,15 @@ export function ComponentNode({ component: c }: { component: ComponentStatus }) 
               <span
                 className={cn(
                   "font-mono whitespace-nowrap",
-                  d.onTarget === true && "text-tone-green",
+                  d.staleBehind && "text-tone-amber",
+                  !d.staleBehind && d.onTarget === true && "text-tone-green",
                   d.onTarget === false && "text-tone-amber",
                   d.onTarget === null && "text-tone-gray",
                 )}
+                title={d.staleBehind ? `On the right train, but ${d.staleBehind} is out` : undefined}
               >
-                {d.version ?? (d.error ? "?" : "absent")}{" "}
-                {d.onTarget === true ? "✓" : d.onTarget === false ? "✗" : ""}
+                {d.version ?? (d.error ? "?" : "absent")}
+                {d.staleBehind ? ` (${d.staleBehind} out)` : d.onTarget === true ? " ✓" : d.onTarget === false ? " ✗" : ""}
               </span>
             </div>
           ))}

@@ -83,6 +83,12 @@ function depDetectorTrain(detector: Detector, fallback: string): string {
   return fallback;
 }
 
+/** Display names for roll-up groups (everything beyond chain/sdk/app). */
+export const GROUP_LABELS: Record<string, string> = {
+  devex: "DevEx",
+  walnut: "Walnut",
+};
+
 function toFindings(e: ComponentEvidence): DepFinding[] {
   const findings: DepFinding[] = [];
   for (const { detector, result } of e.depFindings) {
@@ -95,6 +101,8 @@ function toFindings(e: ComponentEvidence): DepFinding[] {
         version: normalized,
         raw: result.value.raw,
         targetTrain,
+        provesComponent:
+          "provesComponent" in detector ? detector.provesComponent : undefined,
         // Absent (raw null) is definitively not on target; an unparseable
         // version string yields no judgement.
         onTarget:
@@ -163,11 +171,9 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     ? normalizeVersion(releaseInfo.latestStable.tagName)
     : null;
   const latestRc = releaseInfo?.latestRc ? normalizeVersion(releaseInfo.latestRc.tagName) : null;
-  const matchedRelease = releaseInfo?.stableMatch
-    ? normalizeVersion(releaseInfo.stableMatch.tagName)
-    : releaseInfo?.rcOnTrain
-      ? normalizeVersion(releaseInfo.rcOnTrain.tagName)
-      : null;
+  const matched = releaseInfo?.stableMatch ?? releaseInfo?.rcOnTrain ?? null;
+  const matchedRelease = matched ? normalizeVersion(matched.tagName) : null;
+  const matchedPublishedAt = matched?.publishedAt ?? null;
   if (releaseInfo?.latestStable) {
     evidence.push({ label: `release ${releaseInfo.latestStable.tagName}`, url: releaseInfo.latestStable.htmlUrl });
   }
@@ -187,6 +193,7 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     latestStable,
     latestRc,
     matchedRelease,
+    matchedPublishedAt,
     deps,
     evidence,
     blockerIds: e.blockers.map((b) => b.id),
@@ -372,19 +379,19 @@ export function deriveEnvStatus(input: {
   return { ...base, status: "current", tone: ENV_TONE.current, reason: `All services on ${nodeVersion}` };
 }
 
-/** DevEx roll-up (PRD section 9): red when any child is blocked, gray when any
- * cannot be verified, green when every child is at least compatible. */
-export function deriveDevexRollup(children: ComponentStatus[]): RollupStatus {
+/** Group roll-up (PRD section 9): red when any member is blocked, gray when
+ * any cannot be verified, green when every member is at least compatible. */
+export function deriveGroupRollup(children: ComponentStatus[], label = "DevEx"): RollupStatus {
   if (children.some((c) => c.status === "blocked")) {
-    return { status: "blocked", tone: "red", reason: "A DevEx surface is blocked" };
+    return { status: "blocked", tone: "red", reason: `A ${label} surface is blocked` };
   }
   if (children.some((c) => c.status === "unknown")) {
-    return { status: "unknown", tone: "gray", reason: "A DevEx surface cannot be verified" };
+    return { status: "unknown", tone: "gray", reason: `A ${label} surface cannot be verified` };
   }
   if (children.every((c) => STATUS_RANK[c.status] >= STATUS_RANK.compatible)) {
-    return { status: "compatible", tone: "green", reason: "Every DevEx surface is compatible" };
+    return { status: "compatible", tone: "green", reason: `Every ${label} surface is compatible` };
   }
-  return { status: "in-progress", tone: "amber", reason: "DevEx work is incomplete" };
+  return { status: "in-progress", tone: "amber", reason: `${label} work is incomplete` };
 }
 
 export function deriveReadiness(
@@ -392,7 +399,7 @@ export function deriveReadiness(
   environments: EnvStatusResult[],
   openCriticalBlockers: number,
 ): Readiness {
-  const releaseChain = components.filter((c) => c.group !== "devex");
+  const releaseChain = components.filter((c) => !(c.group in GROUP_LABELS));
   const readyCount = releaseChain.filter((c) => STATUS_RANK[c.status] >= STATUS_RANK["rc-released"]).length;
   const anyBlocked = components.some((c) => c.status === "blocked");
   const allReady =

@@ -25,10 +25,13 @@ export const EnvStatusEnum = z.enum(["current", "partial", "behind", "ahead", "u
 
 /** How a dependency version is proven. `targetTrain` overrides the release-wide
  * target for detectors whose upstream runs its own version train (e.g. the
- * wallet's Guardian dependency tracks Guardian 0.17, not Miden 0.16). */
+ * wallet's Guardian dependency tracks Guardian 0.17, not Miden 0.16).
+ * `provesComponent` names the dashboard component this pin tracks, enabling
+ * RC-skew detection (pin on-train but older than the upstream's latest RC). */
 const dep = {
   dependency: z.string().min(1),
   targetTrain: trainString.optional(),
+  provesComponent: z.string().optional(),
 };
 
 export const DetectorSchema = z.discriminatedUnion("type", [
@@ -47,6 +50,7 @@ export const DetectorSchema = z.discriminatedUnion("type", [
     channel: z.string().min(1),
     component: z.string().min(1),
     targetTrain: trainString.optional(),
+    provesComponent: z.string().optional(),
   }),
   z.strictObject({
     type: z.literal("submodule-dep"),
@@ -77,7 +81,7 @@ export const ComponentSchema = z.strictObject({
   branch: z.string().min(1),
   owner: z.string().min(1),
   expectedVersion: trainString,
-  group: z.enum(["chain", "sdk", "app", "devex"]),
+  group: z.enum(["chain", "sdk", "app", "devex", "walnut"]),
   dependsOn: z.array(z.string()).default([]),
   detectors: z.array(DetectorSchema).min(1),
 });
@@ -139,28 +143,9 @@ export const BlockersFileSchema = z.strictObject({
   blockers: z.array(BlockerSchema),
 });
 
-export const PioneerSchema = z.strictObject({
-  partner: z.string().min(1),
-  milestone: z.string().min(1),
-  releaseDependency: z.string().min(1),
-  status: z.enum(["on-track", "at-risk", "blocked", "done"]),
-  /** Component ids (in the default release) this partner is waiting on. */
-  dependsOn: z.array(z.string()).default([]),
-  owner: z.string().min(1),
-  nextDecisionDate: z.iso.date(),
-  hubUrl: z.url().optional(),
-  notes: z.string().optional(),
-});
-export type PioneerConfig = z.infer<typeof PioneerSchema>;
-
-export const PioneersFileSchema = z.strictObject({
-  pioneers: z.array(PioneerSchema).max(7, "keep the Pioneer section to 5-7 partners"),
-});
-
 export interface AppConfig {
   release: ReleaseConfig;
   blockers: BlockerConfig[];
-  pioneers: PioneerConfig[];
 }
 
 function findCycle(components: { id: string; dependsOn: string[] }[]): string | null {
@@ -231,11 +216,15 @@ export function crossValidate(config: AppConfig): string[] {
   const dupB = config.blockers.map((b) => b.id).filter((id, i, all) => all.indexOf(id) !== i);
   for (const d of new Set(dupB)) problems.push(`duplicate blocker id "${d}"`);
 
-  const defaultIds = idsByRelease.get(defaultRelease) ?? new Set<string>();
-  for (const p of config.pioneers) {
-    for (const dep of p.dependsOn) {
-      if (!defaultIds.has(dep)) {
-        problems.push(`pioneer "${p.partner}" dependsOn unknown component "${dep}"`);
+  for (const r of releases) {
+    const ids = idsByRelease.get(r.targetVersion)!;
+    for (const c of r.components) {
+      for (const d of c.detectors) {
+        if ("provesComponent" in d && d.provesComponent && !ids.has(d.provesComponent)) {
+          problems.push(
+            `release ${r.targetVersion}: component "${c.id}" detector proves unknown component "${d.provesComponent}"`,
+          );
+        }
       }
     }
   }

@@ -2,18 +2,19 @@
 
 import { useMemo, useState } from "react";
 import { STATUS_LABEL } from "@/lib/status-engine";
-import type { ComponentStatus, PioneerView, RollupStatus, Tone } from "@/lib/types";
+import { onTrain } from "@/lib/semver-utils";
+import type { ComponentStatus, GroupRollupView, Tone } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { ComponentNode } from "./component-node";
-import { DevexRollup, ROLLUP_LABEL } from "./devex-rollup";
-import { PioneerList } from "./pioneer-list";
+import { GroupRollup, ROLLUP_LABEL } from "./group-rollup";
 import { StatusDot } from "./status-badge";
 
 // Node-and-edge DAG of the release chain. Nodes are compact status chips laid
 // out in dependency layers (computed from config dependsOn, left to right);
-// edges are the actual dependsOn relations. Clicking a node opens the full
-// detail card below the graph. Hand-rolled layout — the graph is 8 fixed
-// nodes, which does not justify a layout library.
+// edges are the actual dependsOn relations, with each roll-up group (DevEx,
+// Walnut) as one aggregate node in a shared final column. Clicking a node
+// opens the full detail card below the graph. Hand-rolled layout — the graph
+// is ~9 fixed nodes, which does not justify a layout library.
 
 const NODE_W = 150;
 const NODE_H = 78;
@@ -33,6 +34,8 @@ interface DagNode {
   id: string;
   label: string;
   version: string;
+  /** Relative age of the matched release, e.g. "3d ago". */
+  age: string | null;
   statusLabel: string;
   tone: Tone;
   manual: boolean;
@@ -76,32 +79,43 @@ function displayVersion(c: ComponentStatus): string {
     c.latestRc ??
     c.latestStable ??
     c.deps.find((d) => d.version)?.version ??
-    "\u2014"
+    "—"
   );
+}
+
+function relativeAge(iso: string | null): string | null {
+  if (!iso) return null;
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) return null;
+  const days = Math.floor(ms / 86_400_000);
+  if (days === 0) return "today";
+  if (days < 14) return `${days}d ago`;
+  if (days < 60) return `${Math.floor(days / 7)}w ago`;
+  return `${Math.floor(days / 30)}mo ago`;
 }
 
 function buildDag(
   components: ComponentStatus[],
-  devexRollup: RollupStatus,
-  pioneers: PioneerView[],
+  rollups: GroupRollupView[],
+  targetVersion: string,
 ) {
-  const chain = components.filter((c) => c.group !== "devex");
-  const devexChildren = components.filter((c) => c.group === "devex");
+  const chain = components.filter((c) => !rollups.some((r) => r.group === c.group));
   const chainIds = new Set(chain.map((c) => c.id));
   const labelOf = new Map(chain.map((c) => [c.id, c.label]));
 
   const layers = computeLayers(chain);
-  const devexCol = Math.max(0, ...layers.values()) + 1;
-  const pioneersCol = devexCol + 1;
+  const rollupCol = Math.max(0, ...layers.values()) + 1;
 
-  // Group nodes into columns, preserving config order within a column.
+  // Group nodes into columns, preserving config order within a column; all
+  // roll-up groups stack in one shared final column.
   const columns = new Map<number, string[]>();
   for (const c of chain) {
     const col = layers.get(c.id) ?? 0;
     columns.set(col, [...(columns.get(col) ?? []), c.id]);
   }
-  columns.set(devexCol, ["devex"]);
-  if (pioneers.length > 0) columns.set(pioneersCol, ["pioneers"]);
+  if (rollups.length > 0) {
+    columns.set(rollupCol, rollups.map((r) => r.group));
+  }
 
   const lastCol = Math.max(...columns.keys());
   const maxRows = Math.max(...[...columns.values()].map((ids) => ids.length));
@@ -119,16 +133,23 @@ function buildDag(
     });
   }
 
-  const nodes: DagNode[] = chain.map((c) => ({
-    id: c.id,
-    label: c.label,
-    version: displayVersion(c),
-    statusLabel: STATUS_LABEL[c.status],
-    tone: c.tone,
-    manual: c.manual,
-    depLabels: c.dependsOn.filter((d) => chainIds.has(d)).map((d) => labelOf.get(d) ?? d),
-    ...positions.get(c.id)!,
-  }));
+  const nodes: DagNode[] = chain.map((c) => {
+    // A component on its own version train (Guardian 0.17, Wallet 1.16) gets
+    // the train spelled out so its version does not read as a mistake.
+    const ownTrain = !onTrain(c.expectedVersion, targetVersion);
+    const version = displayVersion(c);
+    return {
+      id: c.id,
+      label: c.label,
+      version: ownTrain ? `${version} · ${trainOf(c.expectedVersion)} train` : version,
+      age: relativeAge(c.matchedPublishedAt),
+      statusLabel: STATUS_LABEL[c.status],
+      tone: c.tone,
+      manual: c.manual,
+      depLabels: c.dependsOn.filter((d) => chainIds.has(d)).map((d) => labelOf.get(d) ?? d),
+      ...positions.get(c.id)!,
+    };
+  });
 
   const edges: DagEdge[] = [];
   for (const c of chain) {
@@ -137,53 +158,28 @@ function buildDag(
     }
   }
 
-  // The DevEx roll-up inherits the union of its surfaces' chain dependencies.
-  const devexDeps = [
-    ...new Set(devexChildren.flatMap((c) => c.dependsOn).filter((d) => chainIds.has(d))),
-  ];
-  nodes.push({
-    id: "devex",
-    label: "DevEx",
-    version: `${devexChildren.length} surfaces`,
-    statusLabel: ROLLUP_LABEL[devexRollup.status],
-    tone: devexRollup.tone,
-    manual: false,
-    depLabels: devexDeps.map((d) => labelOf.get(d) ?? d),
-    ...positions.get("devex")!,
-  });
-  for (const dep of devexDeps) edges.push({ from: dep, to: "devex" });
-
-  // Pioneers close the pipeline: one manually-curated roll-up node whose
-  // edges come from the union of the partners' configured dependencies.
-  if (pioneers.length > 0) {
-    const worst = pioneers.some((p) => p.status === "blocked")
-      ? { label: "Blocked", tone: "red" as Tone }
-      : pioneers.some((p) => p.status === "at-risk")
-        ? { label: "At risk", tone: "amber" as Tone }
-        : pioneers.every((p) => p.status === "done")
-          ? { label: "Done", tone: "green" as Tone }
-          : { label: "On track", tone: "green" as Tone };
-    const pioneerDeps = [
-      ...new Set(pioneers.flatMap((p) => p.dependsOn ?? []).filter((d) => chainIds.has(d))),
+  // Each roll-up inherits the union of its members' chain dependencies.
+  const allLayers = new Map<string, number>(layers);
+  for (const r of rollups) {
+    const members = components.filter((c) => c.group === r.group);
+    const deps = [
+      ...new Set(members.flatMap((c) => c.dependsOn).filter((d) => chainIds.has(d))),
     ];
     nodes.push({
-      id: "pioneers",
-      label: "Pioneers",
-      version: `${pioneers.length} partners`,
-      statusLabel: worst.label,
-      tone: worst.tone,
-      manual: true,
-      depLabels: pioneerDeps.map((d) => labelOf.get(d) ?? d),
-      ...positions.get("pioneers")!,
+      id: r.group,
+      label: r.label,
+      version: `${members.length} surfaces`,
+      age: null,
+      statusLabel: ROLLUP_LABEL[r.rollup.status],
+      tone: r.rollup.tone,
+      manual: false,
+      depLabels: deps.map((d) => labelOf.get(d) ?? d),
+      ...positions.get(r.group)!,
     });
-    for (const dep of pioneerDeps) edges.push({ from: dep, to: "pioneers" });
+    for (const dep of deps) edges.push({ from: dep, to: r.group });
+    allLayers.set(r.group, rollupCol);
   }
 
-  const allLayers = new Map<string, number>([
-    ...layers,
-    ["devex", devexCol],
-    ["pioneers", pioneersCol],
-  ]);
   const colExtents = new Map<number, { top: number; bottom: number }>();
   for (const [col, ids] of columns) {
     const ys = ids.map((id) => positions.get(id)!.y);
@@ -192,13 +188,17 @@ function buildDag(
   return { nodes, edges, canvasW, canvasH, layers: allLayers, colExtents };
 }
 
+function trainOf(version: string): string {
+  const [major, minor] = version.split(".");
+  return `${major}.${minor}`;
+}
+
 /** Edge path. Adjacent columns connect right-edge to left-edge with a gentle
  * S-curve. An edge spanning further must not disappear behind the nodes in
  * between, and the column gaps are too narrow to complete a climb, so long
- * edges route over the top (or under the bottom): they leave the source's
- * top/bottom edge, run flat at an apex just clear of the columns they cross,
- * and drop into the target's top/bottom edge. Entry/exit x-offsets are spread
- * by span so parallel arrows into one node do not stack. */
+ * edges route over the top (or under the bottom): climb, run flat at an apex
+ * just clear of the crossed columns, drop. Entry/exit x-offsets are spread by
+ * span so parallel arrows into one node do not stack. */
 function edgePath(
   from: DagNode,
   to: DagNode,
@@ -223,11 +223,16 @@ function edgePath(
       const apex = up
         ? Math.max(8, Math.min(...between.map((e) => e.top)) - 14)
         : Math.min(canvasH - 8, Math.max(...between.map((e) => e.bottom)) + 14);
-      // Endpoints already level with the apex (the tall column's outer rows)
-      // connect via their side edge; everything else goes over the top or
-      // under the bottom of its own node.
-      const sideExit = up ? from.y <= apex : from.y + NODE_H >= apex;
-      const sideEntry = up ? to.y <= apex : to.y + NODE_H >= apex;
+      // A node may only exit/enter vertically when it is the outermost row of
+      // its column in the routing direction — an inner row would climb straight
+      // through its sibling. Endpoints already level with the apex also
+      // connect via their side edge.
+      const fromExt = colExtents.get(fromCol);
+      const toExt = colExtents.get(toCol);
+      const fromOuter = up ? from.y === (fromExt?.top ?? from.y) : from.y + NODE_H === (fromExt?.bottom ?? from.y + NODE_H);
+      const toOuter = up ? to.y === (toExt?.top ?? to.y) : to.y + NODE_H === (toExt?.bottom ?? to.y + NODE_H);
+      const sideExit = !fromOuter || (up ? from.y <= apex : from.y + NODE_H >= apex);
+      const sideEntry = !toOuter || (up ? to.y <= apex : to.y + NODE_H >= apex);
       const sx = sideExit ? x1 : from.x + NODE_W - 16 - span * 4;
       const sy = sideExit ? y1 : up ? from.y : from.y + NODE_H;
       const ex = sideEntry ? x2 : to.x + 12 + span * 8;
@@ -249,21 +254,21 @@ function edgePath(
 
 export function DependencyDag({
   components,
-  devexRollup,
-  pioneers,
+  rollups,
+  targetVersion,
 }: {
   components: ComponentStatus[];
-  devexRollup: RollupStatus;
-  pioneers: PioneerView[];
+  rollups: GroupRollupView[];
+  targetVersion: string;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
   const { nodes, edges, canvasW, canvasH, layers, colExtents } = useMemo(
-    () => buildDag(components, devexRollup, pioneers),
-    [components, devexRollup, pioneers],
+    () => buildDag(components, rollups, targetVersion),
+    [components, rollups, targetVersion],
   );
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const selectedComponent = components.find((c) => c.id === selected);
-  const devexChildren = components.filter((c) => c.group === "devex");
+  const selectedRollup = rollups.find((r) => r.group === selected);
 
   return (
     <section aria-label="Dependency graph" className="flex flex-col gap-3">
@@ -320,7 +325,10 @@ export function DependencyDag({
                 <StatusDot tone={n.tone} />
                 <span className="truncate text-sm font-semibold">{n.label}</span>
               </span>
-              <span className="truncate font-mono text-xs text-muted-foreground">{n.version}</span>
+              <span className="truncate font-mono text-xs text-muted-foreground">
+                {n.version}
+                {n.age && ` · ${n.age}`}
+              </span>
               <span className={cn("truncate text-[11px] font-medium", TONE_TEXT[n.tone])}>
                 {n.statusLabel}
                 {n.manual && " · manual"}
@@ -342,11 +350,14 @@ export function DependencyDag({
         <span className="flex items-center gap-1.5"><StatusDot tone="gray" /> unknown or stale</span>
       </div>
 
-      <div id="dag-detail" data-testid="dag-detail" className={cn("empty:hidden", selected === "pioneers" ? "max-w-4xl" : "max-w-md")}>
-        {selected === "devex" ? (
-          <DevexRollup rollup={devexRollup} components={devexChildren} defaultOpen />
-        ) : selected === "pioneers" ? (
-          <PioneerList pioneers={pioneers} />
+      <div id="dag-detail" data-testid="dag-detail" className="max-w-md empty:hidden">
+        {selectedRollup ? (
+          <GroupRollup
+            title={selectedRollup.label}
+            rollup={selectedRollup.rollup}
+            components={components.filter((c) => c.group === selectedRollup.group)}
+            defaultOpen
+          />
         ) : selectedComponent ? (
           <ComponentNode component={selectedComponent} />
         ) : null}

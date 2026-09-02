@@ -6,7 +6,6 @@ import {
   type AppConfig,
   BlockersFileSchema,
   crossValidate,
-  PioneersFileSchema,
   ReleaseConfigSchema,
 } from "./schema";
 
@@ -30,8 +29,7 @@ function parseOrThrow<T>(schema: z.ZodType<T>, data: unknown, file: string): T {
 export function loadConfig(): AppConfig {
   const release = parseOrThrow(ReleaseConfigSchema, readYaml("release.yaml"), "config/release.yaml");
   const blockers = parseOrThrow(BlockersFileSchema, readYaml("blockers.yaml"), "config/blockers.yaml").blockers;
-  const pioneers = parseOrThrow(PioneersFileSchema, readYaml("pioneers.yaml"), "config/pioneers.yaml").pioneers;
-  const config: AppConfig = { release, blockers, pioneers };
+  const config: AppConfig = { release, blockers };
   const problems = crossValidate(config);
   if (problems.length > 0) {
     throw new Error(`invalid config:\n  - ${problems.join("\n  - ")}`);

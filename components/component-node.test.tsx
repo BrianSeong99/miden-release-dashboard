@@ -19,6 +19,7 @@ const base: ComponentStatus = {
   latestStable: "0.15.2",
   latestRc: "0.16.0-rc.3",
   matchedRelease: "0.16.0-rc.3",
+  matchedPublishedAt: null,
   deps: [
     {
       label: "miden-protocol (Cargo.toml)",
@@ -73,6 +74,18 @@ describe("ComponentNode", () => {
       />,
     );
     expect(screen.getByText("Manual")).toBeInTheDocument();
+  });
+
+  it("flags an on-train pin that lags the upstream's newest release", () => {
+    render(
+      <ComponentNode
+        component={{
+          ...base,
+          deps: [{ ...base.deps[0], staleBehind: "0.16.0-rc.7" }],
+        }}
+      />,
+    );
+    expect(screen.getByText(/0\.16\.0-rc\.7 out/)).toBeInTheDocument();
   });
 
   it("blocked state renders red with the blocker reason", () => {

@@ -122,10 +122,12 @@ releases:
           - type: cargo-dep
             path: rust-client/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
             targetTrain: "0.15"
           - type: npm-dep
             path: web-client/package.json
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
             targetTrain: "0.15"
       - id: frontend-template
         label: "Frontend template"
@@ -138,6 +140,7 @@ releases:
         detectors:
           - type: npm-dep
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
             targetTrain: "0.15"
       - id: project-template
         label: "Project template"
@@ -151,6 +154,7 @@ releases:
           - type: cargo-dep
             path: integration/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
             targetTrain: "0.15"
       - id: agentic-template
         label: "Agentic template"
@@ -167,6 +171,7 @@ releases:
             manifest: npm
             path: package.json
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
             targetTrain: "0.15"
           - type: submodule-dep
             submodulePath: project-template
@@ -174,6 +179,7 @@ releases:
             manifest: cargo
             path: integration/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
             targetTrain: "0.15"
       - id: midenup
         label: "midenup"
@@ -187,10 +193,50 @@ releases:
           - type: midenup-channel
             channel: "0.15.0"
             component: client
+            provesComponent: rust-sdk
             targetTrain: "0.15"
           - type: midenup-channel
             channel: "0.15.0"
             component: node
+            provesComponent: node
+            targetTrain: "0.15"
+
+      # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
+      # or tags on these repos; version comes from manifests on main. NOTE:
+      # never infer the Miden train from @openzeppelin/miden-multisig-client —
+      # it is versioned independently (0.16.x while the SDK sat on 0.15).
+      - id: playground
+        label: "Playground"
+        repo: walnuthq/miden-playground
+        branch: main
+        owner: "Walnut"
+        expectedVersion: "0.15"
+        group: walnut
+        dependsOn: [web-sdk]
+        detectors:
+          - type: npm-dep
+            path: apps/web/package.json
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
+            targetTrain: "0.15"
+      - id: source-verification
+        label: "Source verification"
+        repo: walnuthq/miden-source-code-verification
+        branch: main
+        owner: "Walnut"
+        expectedVersion: "0.15"
+        group: walnut
+        dependsOn: [rust-sdk, web-sdk]
+        detectors:
+          - type: cargo-dep
+            path: apps/api-compile/crates/miden-verifier/Cargo.toml
+            dependency: miden-client
+            provesComponent: rust-sdk
+            targetTrain: "0.15"
+          - type: npm-dep
+            path: apps/web-verifier/package.json
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
             targetTrain: "0.15"
 
   # ---- Current release train. ----
@@ -219,6 +265,7 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-core
+            provesComponent: vm
             targetTrain: "0.29"
       - id: node
         label: "Node"
@@ -232,6 +279,7 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-protocol
+            provesComponent: protocol
       - id: rust-sdk
         label: "Rust SDK"
         repo: 0xMiden/rust-sdk
@@ -244,9 +292,11 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-protocol
+            provesComponent: protocol
           # The only node edge: the build-time proto crate.
           - type: cargo-dep
             dependency: miden-node-proto-build
+            provesComponent: node
       - id: web-sdk
         label: "Web SDK"
         repo: 0xMiden/web-sdk
@@ -259,6 +309,7 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-client
+            provesComponent: rust-sdk
       - id: guardian
         label: "Guardian"
         repo: OpenZeppelin/guardian
@@ -271,9 +322,11 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-protocol
+            provesComponent: protocol
           - type: npm-dep
             path: packages/miden-multisig-client/package.json
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
       - id: wallet
         label: "Wallet"
         repo: 0xMiden/wallet
@@ -286,8 +339,10 @@ releases:
           - type: github-release
           - type: npm-dep
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
           - type: npm-dep
             dependency: "@openzeppelin/guardian-client"
+            provesComponent: guardian
             targetTrain: "0.17"
       - id: docs
         label: "Docs"
@@ -313,9 +368,11 @@ releases:
           - type: cargo-dep
             path: rust-client/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
           - type: npm-dep
             path: web-client/package.json
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
       - id: frontend-template
         label: "Frontend template"
         repo: 0xMiden/frontend-template
@@ -327,6 +384,7 @@ releases:
         detectors:
           - type: npm-dep
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
       - id: project-template
         label: "Project template"
         repo: 0xMiden/project-template
@@ -341,6 +399,7 @@ releases:
           - type: cargo-dep
             path: integration/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
       - id: agentic-template
         label: "Agentic template"
         repo: 0xMiden/agentic-template
@@ -358,12 +417,14 @@ releases:
             manifest: npm
             path: package.json
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
           - type: submodule-dep
             submodulePath: project-template
             sourceRepo: 0xMiden/project-template
             manifest: cargo
             path: integration/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
       - id: midenup
         label: "midenup"
         repo: 0xMiden/midenup
@@ -376,9 +437,50 @@ releases:
           - type: midenup-channel
             channel: "0.16.0"
             component: client
+            provesComponent: rust-sdk
           - type: midenup-channel
             channel: "0.16.0"
             component: node
+            provesComponent: node
+
+      # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
+      # or tags on these repos; version comes from manifests on main. NOTE:
+      # never infer the Miden train from @openzeppelin/miden-multisig-client —
+      # it is versioned independently (0.16.x while the SDK sat on 0.15).
+      - id: playground
+        label: "Playground"
+        repo: walnuthq/miden-playground
+        branch: main
+        owner: "Walnut"
+        expectedVersion: "0.16"
+        group: walnut
+        dependsOn: [web-sdk]
+        detectors:
+          - type: npm-dep
+            path: apps/web/package.json
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
+          - type: migration-pr
+            number: 633
+      - id: source-verification
+        label: "Source verification"
+        repo: walnuthq/miden-source-code-verification
+        branch: main
+        owner: "Walnut"
+        expectedVersion: "0.16"
+        group: walnut
+        dependsOn: [rust-sdk, web-sdk]
+        detectors:
+          - type: cargo-dep
+            path: apps/api-compile/crates/miden-verifier/Cargo.toml
+            dependency: miden-client
+            provesComponent: rust-sdk
+          - type: npm-dep
+            path: apps/web-verifier/package.json
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
+          - type: migration-pr
+            number: 22
 
   # ---- Next release train (drafts — expected versions to confirm as the
   # 0.17 plan firms up; branches already carry 0.17 work where noted). ----
@@ -417,6 +519,7 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-protocol
+            provesComponent: protocol
       - id: rust-sdk
         label: "Rust SDK"
         repo: 0xMiden/rust-sdk
@@ -429,6 +532,7 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-protocol
+            provesComponent: protocol
       - id: web-sdk
         label: "Web SDK"
         repo: 0xMiden/web-sdk
@@ -441,6 +545,7 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-client
+            provesComponent: rust-sdk
       - id: guardian
         label: "Guardian"
         repo: OpenZeppelin/guardian
@@ -453,6 +558,7 @@ releases:
           - type: github-release
           - type: cargo-dep
             dependency: miden-protocol
+            provesComponent: protocol
       - id: wallet
         label: "Wallet"
         repo: 0xMiden/wallet
@@ -465,6 +571,7 @@ releases:
           - type: github-release
           - type: npm-dep
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
       - id: docs
         label: "Docs"
         repo: 0xMiden/docs
@@ -489,9 +596,11 @@ releases:
           - type: cargo-dep
             path: rust-client/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
           - type: npm-dep
             path: web-client/package.json
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
       - id: frontend-template
         label: "Frontend template"
         repo: 0xMiden/frontend-template
@@ -503,6 +612,7 @@ releases:
         detectors:
           - type: npm-dep
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
       - id: project-template
         label: "Project template"
         repo: 0xMiden/project-template
@@ -515,6 +625,7 @@ releases:
           - type: cargo-dep
             path: integration/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
       - id: agentic-template
         label: "Agentic template"
         repo: 0xMiden/agentic-template
@@ -530,12 +641,14 @@ releases:
             manifest: npm
             path: package.json
             dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
           - type: submodule-dep
             submodulePath: project-template
             sourceRepo: 0xMiden/project-template
             manifest: cargo
             path: integration/Cargo.toml
             dependency: miden-client
+            provesComponent: rust-sdk
       - id: midenup
         label: "midenup"
         repo: 0xMiden/midenup
@@ -548,3 +661,38 @@ releases:
           - type: midenup-channel
             channel: "0.17.0"
             component: client
+            provesComponent: rust-sdk
+      # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
+      # or tags on these repos; version comes from manifests on main. NOTE:
+      # never infer the Miden train from @openzeppelin/miden-multisig-client —
+      # it is versioned independently (0.16.x while the SDK sat on 0.15).
+      - id: playground
+        label: "Playground"
+        repo: walnuthq/miden-playground
+        branch: main
+        owner: "Walnut"
+        expectedVersion: "0.17"
+        group: walnut
+        dependsOn: [web-sdk]
+        detectors:
+          - type: npm-dep
+            path: apps/web/package.json
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
+      - id: source-verification
+        label: "Source verification"
+        repo: walnuthq/miden-source-code-verification
+        branch: main
+        owner: "Walnut"
+        expectedVersion: "0.17"
+        group: walnut
+        dependsOn: [rust-sdk, web-sdk]
+        detectors:
+          - type: cargo-dep
+            path: apps/api-compile/crates/miden-verifier/Cargo.toml
+            dependency: miden-client
+            provesComponent: rust-sdk
+          - type: npm-dep
+            path: apps/web-verifier/package.json
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk

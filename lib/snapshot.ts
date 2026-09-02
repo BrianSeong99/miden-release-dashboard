@@ -5,32 +5,26 @@ import { err } from "./fetch-utils";
 import { getIssueState, listReleases } from "./github";
 import { runDepDetector } from "./manifests";
 import type { Detector } from "./schema";
+import { compareDesc } from "./semver-utils";
 import {
   deriveComponentStatus,
-  deriveDevexRollup,
+  deriveGroupRollup,
   deriveEnvStatus,
   deriveReadiness,
+  GROUP_LABELS,
 } from "./status-engine";
 import type {
   BlockerView,
   DashboardSnapshot,
   DetectedVersion,
-  PioneerView,
+  GroupRollupView,
   Result,
-  Tone,
 } from "./types";
 
 // Orchestrator: fan out every automated source, isolate failures per source,
 // hand the evidence to the pure status engine, and assemble the snapshot.
 // One cache layer only: unstable_cache below owns the 5-minute window and all
 // inner fetches are no-store (see fetch-utils.safeFetch).
-
-const PIONEER_TONE: Record<PioneerView["status"], Tone> = {
-  "on-track": "green",
-  "at-risk": "amber",
-  blocked: "red",
-  done: "green",
-};
 
 const isDepDetector = (
   d: Detector,
@@ -135,7 +129,27 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
     }),
   );
 
-  const devexChildren = components.filter((c) => c.group === "devex");
+  // RC-skew post-pass: a pin that is on-train but older than the newest
+  // release of the component it tracks gets flagged (the layered-RC-skew
+  // problem — every layer riding a different RC).
+  const byId = new Map(components.map((c) => [c.id, c]));
+  for (const c of components) {
+    for (const f of c.deps) {
+      if (!f.provesComponent || f.onTarget !== true || !f.version) continue;
+      const upstream = byId.get(f.provesComponent);
+      const newest = upstream?.matchedRelease ?? upstream?.latestRc ?? upstream?.latestStable;
+      if (newest && compareDesc(f.version, newest) > 0) f.staleBehind = newest;
+    }
+  }
+
+  const rollups: GroupRollupView[] = Object.entries(GROUP_LABELS)
+    .filter(([group]) => components.some((c) => c.group === group))
+    .map(([group, label]) => ({
+      group,
+      label,
+      rollup: deriveGroupRollup(components.filter((c) => c.group === group), label),
+    }));
+
   const openCritical = blockerViews.filter(
     (b) => b.severity === "critical" && b.live.state !== "merged" && b.live.state !== "closed",
   ).length;
@@ -154,10 +168,9 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
     })),
     readiness: deriveReadiness(components, environments, openCritical),
     components,
-    devexRollup: deriveDevexRollup(devexChildren),
+    rollups,
     environments,
     blockers: blockerViews,
-    pioneers: config.pioneers.map((p) => ({ ...p, tone: PIONEER_TONE[p.status] })),
   };
 }
 

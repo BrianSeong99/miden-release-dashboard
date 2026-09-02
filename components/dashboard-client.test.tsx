@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
 }));
+
 import type { DashboardSnapshot } from "@/lib/types";
 import { DashboardClient } from "./dashboard-client";
 
@@ -17,22 +18,32 @@ const snapshot: DashboardSnapshot = {
     { name: "Miden v0.16", targetVersion: "0.16", isDefault: true },
     { name: "Miden v0.17", targetVersion: "0.17", isDefault: false },
   ],
-  readiness: { level: "blocked", readyCount: 4, totalCount: 7, criticalBlockerCount: 5 },
+  readiness: { level: "blocked", readyCount: 4, totalCount: 7, criticalBlockerCount: 2 },
   components: [
     {
       id: "vm", label: "Miden VM", repo: "0xMiden/miden-vm", branch: "next", owner: "VM team",
       expectedVersion: "0.30.0", group: "chain", dependsOn: [], status: "stable-released",
       tone: "green", manual: false, reason: "Stable v0.30.0 is published", latestStable: "0.30.0",
-      latestRc: null, matchedRelease: "0.30.0", deps: [], evidence: [], blockerIds: [], errors: [],
+      latestRc: null, matchedRelease: "0.30.0", matchedPublishedAt: at, deps: [], evidence: [],
+      blockerIds: [], errors: [],
+    },
+    {
+      id: "protocol", label: "Protocol", repo: "0xMiden/protocol", branch: "next", owner: "Protocol team",
+      expectedVersion: "0.16.0", group: "chain", dependsOn: ["vm"], status: "blocked",
+      tone: "red", manual: false, reason: "1 open critical blocker", latestStable: null,
+      latestRc: "0.16.0-rc.7", matchedRelease: "0.16.0-rc.7", matchedPublishedAt: at, deps: [],
+      evidence: [], blockerIds: ["b1"], errors: [],
     },
     {
       id: "docs", label: "Docs", repo: "0xMiden/docs", branch: "main", owner: "Brian",
       expectedVersion: "0.16", group: "devex", dependsOn: [], status: "compatible",
-      tone: "green", manual: false, reason: "on train", latestStable: null, latestRc: null, matchedRelease: null,
-      deps: [], evidence: [], blockerIds: [], errors: [],
+      tone: "green", manual: false, reason: "on train", latestStable: null, latestRc: null,
+      matchedRelease: null, matchedPublishedAt: null, deps: [], evidence: [], blockerIds: [], errors: [],
     },
   ],
-  devexRollup: { status: "compatible", tone: "green", reason: "Every DevEx surface is compatible" },
+  rollups: [
+    { group: "devex", label: "DevEx", rollup: { status: "compatible", tone: "green", reason: "Every DevEx surface is compatible" } },
+  ],
   environments: [
     {
       id: "devnet", label: "DevNet", status: "current", tone: "green", manual: false,
@@ -45,27 +56,37 @@ const snapshot: DashboardSnapshot = {
       checkedAt: at, statusUrl: "https://status.testnet.miden.io/status",
     },
   ],
-  blockers: [],
-  pioneers: [
+  blockers: [
     {
-      partner: "NubX", milestone: "m", releaseDependency: "Web SDK 0.16", dependsOn: ["vm"], status: "on-track",
-      tone: "green", owner: "Brian", nextDecisionDate: "2026-09-07",
+      id: "b1", title: "Fee drain", severity: "critical", stage: "protocol", owner: "mmagician",
+      exitCondition: "fix merged", nextDecisionDate: "2026-09-03",
+      url: "https://github.com/0xMiden/protocol/issues/3763",
+      live: { state: "open", checkedAt: at },
+    },
+    {
+      id: "b2", title: "Faucet fee asset", severity: "high", stage: "protocol", owner: "Wiktor",
+      exitCondition: "merged", nextDecisionDate: "2026-09-03",
+      url: "https://github.com/0xMiden/protocol/pull/3766",
+      live: { state: "merged", checkedAt: at },
     },
   ],
 };
 
 describe("DashboardClient", () => {
-  it("renders all four sections from a full snapshot", () => {
+  it("renders overview, DAG, and blockers from a full snapshot", () => {
     render(<DashboardClient initial={snapshot} />);
     expect(screen.getByRole("heading", { name: "Miden Release Dashboard" })).toBeInTheDocument();
-    expect(screen.getAllByText("Miden v0.16").length).toBeGreaterThan(0);
     expect(screen.getByText("Miden VM")).toBeInTheDocument();
     expect(screen.getByText("DevEx")).toBeInTheDocument();
     expect(screen.getByText("0.16.0-rc.3")).toBeInTheDocument(); // devnet chip
-    expect(screen.getByText("NubX")).toBeInTheDocument();
-    // Pioneers are manual → badge present; automated VM card carries none.
-    expect(screen.getAllByText("Manual").length).toBeGreaterThan(0);
-    expect(screen.getByText(/No critical blockers/)).toBeInTheDocument();
+    expect(screen.getByText(/1 critical · 0 other open · 1 resolved/)).toBeInTheDocument();
+  });
+
+  it("surfaces the first blocked component in the Now-blocking callout", () => {
+    render(<DashboardClient initial={snapshot} />);
+    const callout = screen.getByTestId("now-blocking");
+    expect(callout).toHaveTextContent("Protocol — 1 open critical (mmagician)");
+    expect(callout).toHaveTextContent("next decision 2026-09-03");
   });
 
   it("renders the release dropdown with the viewed release selected", () => {

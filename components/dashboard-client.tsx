@@ -3,15 +3,25 @@
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import useSWR from "swr";
-import type { DashboardSnapshot } from "@/lib/types";
+import type { BlockerView, DashboardSnapshot } from "@/lib/types";
 import { BlockerList } from "./blocker-list";
 import { DependencyDag } from "./dependency-dag";
 import { ManualBadge } from "./manual-badge";
-import { PioneerList } from "./pioneer-list";
 import { ReleaseOverview } from "./release-overview";
 import { StaleBanner } from "./stale-banner";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<DashboardSnapshot>);
+
+function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
+  const open = blockers.filter((b) => b.live.state === "open" || b.live.state === "unknown");
+  const critical = open.filter((b) => b.severity === "critical").length;
+  const resolved = blockers.length - open.length;
+  return (
+    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+      {critical} critical · {open.length - critical} other open · {resolved} resolved
+    </span>
+  );
+}
 
 function Section({
   title,
@@ -102,22 +112,25 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       <ReleaseOverview snapshot={snapshot} />
 
       <Section title="Dependency chain">
-        <DependencyDag components={snapshot.components} devexRollup={snapshot.devexRollup} pioneers={snapshot.pioneers} />
+        <DependencyDag components={snapshot.components} rollups={snapshot.rollups} targetVersion={snapshot.release.targetVersion} />
       </Section>
 
-      <Section title="Critical blockers">
+      <Section
+        title="Release blockers"
+        aside={
+          <span className="flex items-center gap-2">
+            <BlockerCounts blockers={snapshot.blockers} />
+            <ManualBadge note="Curated in config/blockers.yaml — the State column is live from GitHub" />
+          </span>
+        }
+      >
         <BlockerList blockers={snapshot.blockers} today={today} />
       </Section>
 
-      <div className="rounded-xl bg-muted/60 p-4 md:p-6">
-        <Section title="Pioneers" aside={<ManualBadge note="Curated by hand in config/pioneers.yaml" />}>
-          <PioneerList pioneers={snapshot.pioneers} />
-        </Section>
-      </div>
 
       <footer className="border-t pt-4 text-xs text-muted-foreground">
         Internal — automated data from GitHub and status.*.miden.io; manual data is badged.
-        Edit <span className="font-mono">config/*.yaml</span> to update blockers and Pioneers.
+        Edit <span className="font-mono">config/*.yaml</span> to update the monitored components and blockers.
       </footer>
     </main>
   );

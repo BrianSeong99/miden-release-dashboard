@@ -77,6 +77,11 @@ export interface DepFinding {
   targetTrain: string;
   /** null = detector failed, so no judgement. */
   onTarget: boolean | null;
+  /** Dashboard component this pin tracks (for RC-skew detection). */
+  provesComponent?: string;
+  /** Set when the pin is on-train but an upstream release is newer —
+   * the layered-RC-skew signal (pin rc.4 while rc.7 is out). */
+  staleBehind?: string;
   url: string | null;
   error?: string;
 }
@@ -88,7 +93,7 @@ export interface ComponentStatus {
   branch: string;
   owner: string;
   expectedVersion: string;
-  group: "chain" | "sdk" | "app" | "devex";
+  group: "chain" | "sdk" | "app" | "devex" | "walnut";
   dependsOn: string[];
   status: RepoStatusId;
   tone: Tone;
@@ -100,6 +105,8 @@ export interface ComponentStatus {
   latestRc: string | null;
   /** The release/RC on THIS view's target train, when one exists. */
   matchedRelease: string | null;
+  /** When the matched release was published (for "rc.7 · 3d ago"). */
+  matchedPublishedAt: string | null;
   deps: DepFinding[];
   evidence: { label: string; url: string }[];
   blockerIds: string[];
@@ -125,6 +132,13 @@ export interface RollupStatus {
   status: RepoStatusId | "in-progress";
   tone: Tone;
   reason: string;
+}
+
+/** A roll-up node on the DAG (DevEx, Walnut, …) aggregating one group. */
+export interface GroupRollupView {
+  group: string;
+  label: string;
+  rollup: RollupStatus;
 }
 
 export interface BlockerView {
@@ -163,22 +177,8 @@ export interface DashboardSnapshot {
   releases: ReleaseOption[];
   readiness: Readiness;
   components: ComponentStatus[];
-  devexRollup: RollupStatus;
+  rollups: GroupRollupView[];
   environments: EnvStatusResult[];
   blockers: BlockerView[];
-  pioneers: PioneerView[];
 }
 
-export interface PioneerView {
-  partner: string;
-  milestone: string;
-  releaseDependency: string;
-  /** Component ids this partner waits on (drawn as DAG edges). */
-  dependsOn: string[];
-  status: "on-track" | "at-risk" | "blocked" | "done";
-  tone: Tone;
-  owner: string;
-  nextDecisionDate: string;
-  hubUrl?: string;
-  notes?: string;
-}

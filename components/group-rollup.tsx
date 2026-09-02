@@ -9,25 +9,28 @@ export const ROLLUP_LABEL: Record<RollupStatus["status"], string> = {
   "in-progress": "In progress",
 };
 
-/** The DevEx stage: one aggregate card, expandable to compact per-repo rows
- * (PRD section 9). Native <details> keeps it dependency-free. */
-export function DevexRollup({
+/** A roll-up stage (DevEx, Walnut, …): one aggregate card, expandable to
+ * compact per-repo rows (PRD section 9). Native <details> keeps it
+ * dependency-free. */
+export function GroupRollup({
+  title,
   rollup,
   components,
   defaultOpen = false,
 }: {
+  title: string;
   rollup: RollupStatus;
   components: ComponentStatus[];
   defaultOpen?: boolean;
 }) {
   return (
     <div
-      data-testid="component-devex"
+      data-testid={`rollup-${title.toLowerCase()}`}
       className="flex h-full w-full flex-col gap-2.5 rounded-xl border bg-card p-4"
     >
       <div className="flex items-start justify-between gap-2">
         <div>
-          <div className="font-semibold">DevEx</div>
+          <div className="font-semibold">{title}</div>
           <div className="text-xs text-muted-foreground">{components.length} surfaces</div>
         </div>
         <StatusBadge tone={rollup.tone} label={ROLLUP_LABEL[rollup.status]} title={rollup.reason} />

@@ -29,6 +29,14 @@ function route(url: string): { body: string; status: number } {
   if (u.pathname.includes("/contents/")) {
     const file = decodeURIComponent(u.pathname.split("/contents/")[1]);
     const repo = u.pathname.split("/repos/")[1].split("/contents/")[0];
+    if (repo.startsWith("walnuthq/")) {
+      // playground apps/web/package.json and SCV manifests: keep them on 0.15
+      // so the walnut group reads Migrating (their 0.16 PRs are open).
+      if (file.endsWith("package.json")) {
+        return { body: JSON.stringify({ dependencies: { "@miden-sdk/miden-sdk": "0.15.9" } }), status: 200 };
+      }
+      return { body: '[dependencies]\nmiden-client = "0.15"\n', status: 200 };
+    }
     if (repo === "0xMiden/agentic-template") {
       // submodule pointer lookup
       return {
@@ -74,10 +82,10 @@ describe("buildSnapshot", () => {
     expect(snap.release.name).toBe("Miden v0.16");
     expect(snap.releases.map((r) => r.targetVersion)).toEqual(["0.15", "0.16", "0.17"]);
     expect(snap.releases.find((r) => r.isDefault)?.targetVersion).toBe("0.16");
-    expect(snap.components).toHaveLength(13);
+    expect(snap.components).toHaveLength(15);
     expect(snap.blockers).toHaveLength(10);
-    expect(snap.pioneers).toHaveLength(5);
     expect(snap.environments).toHaveLength(2);
+    expect(snap.rollups.map((r) => r.group)).toEqual(["devex", "walnut"]);
 
     const byId = new Map(snap.components.map((c) => [c.id, c]));
     // Protocol & wallet carry open critical blockers → blocked outranks the RC.
@@ -90,6 +98,12 @@ describe("buildSnapshot", () => {
     // Agentic template is fully automated via submodule detectors now.
     expect(byId.get("agentic-template")?.manual).toBe(false);
     expect(byId.get("agentic-template")?.status).toBe("compatible");
+    // Walnut surfaces: 0.15 pins + open 0.16 migration PRs -> Migrating.
+    expect(byId.get("playground")?.status).toBe("migrating");
+    expect(byId.get("source-verification")?.status).toBe("migrating");
+    // RC-skew: node pins protocol rc.4 while protocol's matched RC is rc.7.
+    const nodeDep = byId.get("node")?.deps.find((d) => d.provesComponent === "protocol");
+    expect(nodeDep?.staleBehind).toBe("0.16.0-rc.7");
     // Environments: devnet on the 0.16 train, testnet behind (recorded payloads).
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
     expect(envs).toEqual({ devnet: "current", testnet: "behind" });
@@ -121,7 +135,7 @@ describe("buildSnapshot", () => {
       vi.fn(async () => new Response("{}", { status: 500 })),
     );
     const snap = await buildSnapshot();
-    expect(snap.components).toHaveLength(13);
+    expect(snap.components).toHaveLength(15);
     for (const c of snap.components) {
       // Blockers' live state is unknown → conservatively blocking for critical
       // stages; everything else has no evidence → unknown. Manual stays manual.

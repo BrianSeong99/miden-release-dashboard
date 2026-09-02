@@ -1,12 +1,18 @@
+import { Fragment } from "react";
 import { FileText } from "lucide-react";
 import type { BlockerView } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { StatusBadge } from "./status-badge";
 
 const SEVERITY_TONE = { critical: "red", high: "amber", medium: "gray" } as const;
+const SEVERITY_RANK = { critical: 0, high: 1, medium: 2 } as const;
 
-const LIVE_TONE = { open: "amber", merged: "green", closed: "green", unknown: "gray" } as const;
-const LIVE_LABEL = { open: "Open", merged: "Merged", closed: "Closed", unknown: "Unknown" };
+// "Closed" without a merge usually means superseded or rejected — the exit
+// condition may NOT be met, so it renders amber, not green.
+const LIVE_TONE = { open: "amber", merged: "green", closed: "amber", unknown: "gray" } as const;
+const LIVE_LABEL = { open: "Open", merged: "Merged", closed: "Closed — verify", unknown: "Unknown" };
+
+const isOpen = (b: BlockerView) => b.live.state === "open" || b.live.state === "unknown";
 
 function pastDue(date: string, today: string): boolean {
   return date < today;
@@ -18,6 +24,13 @@ export function BlockerList({ blockers, today }: { blockers: BlockerView[]; toda
   if (blockers.length === 0) {
     return <p className="text-sm text-muted-foreground">No critical blockers configured.</p>;
   }
+  const sorted = [...blockers].sort(
+    (a, b) =>
+      Number(isOpen(b)) - Number(isOpen(a)) ||
+      SEVERITY_RANK[a.severity] - SEVERITY_RANK[b.severity] ||
+      a.nextDecisionDate.localeCompare(b.nextDecisionDate),
+  );
+  const firstResolved = sorted.findIndex((b) => !isOpen(b));
   return (
     <div className="overflow-x-auto rounded-xl border bg-card">
       <table className="w-full min-w-[900px] border-collapse text-[13px]">
@@ -33,8 +46,16 @@ export function BlockerList({ blockers, today }: { blockers: BlockerView[]; toda
           </tr>
         </thead>
         <tbody>
-          {blockers.map((b) => (
-            <tr key={b.id} className="border-b align-top last:border-b-0 hover:bg-muted/50">
+          {sorted.map((b, i) => (
+            <Fragment key={b.id}>
+            {i === firstResolved && (
+              <tr>
+                <td colSpan={7} className="bg-muted/60 px-3 py-1.5 text-xs font-medium tracking-wide text-muted-foreground">
+                  Resolved this cycle
+                </td>
+              </tr>
+            )}
+            <tr className="border-b align-top last:border-b-0 hover:bg-muted/50">
               <td className="px-3 py-2.5">
                 <StatusBadge tone={SEVERITY_TONE[b.severity]} label={b.severity} />
               </td>
@@ -75,6 +96,7 @@ export function BlockerList({ blockers, today }: { blockers: BlockerView[]; toda
                 {b.nextDecisionDate}
               </td>
             </tr>
+            </Fragment>
           ))}
         </tbody>
       </table>

@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ComponentConfig } from "./schema";
 import {
   deriveComponentStatus,
-  deriveDevexRollup,
+  deriveGroupRollup,
   deriveEnvStatus,
   deriveReadiness,
   type ComponentEvidence,
@@ -289,10 +289,10 @@ describe("roll-ups", () => {
     ({ status, tone: "gray", group: "devex" }) as ComponentStatus;
 
   it("devex: red > gray > green > amber precedence", () => {
-    expect(deriveDevexRollup([child("blocked"), child("unknown")]).tone).toBe("red");
-    expect(deriveDevexRollup([child("unknown"), child("compatible")]).tone).toBe("gray");
-    expect(deriveDevexRollup([child("compatible"), child("stable-released")]).tone).toBe("green");
-    expect(deriveDevexRollup([child("not-started"), child("compatible")]).tone).toBe("amber");
+    expect(deriveGroupRollup([child("blocked"), child("unknown")]).tone).toBe("red");
+    expect(deriveGroupRollup([child("unknown"), child("compatible")]).tone).toBe("gray");
+    expect(deriveGroupRollup([child("compatible"), child("stable-released")]).tone).toBe("green");
+    expect(deriveGroupRollup([child("not-started"), child("compatible")]).tone).toBe("amber");
   });
 
   it("readiness counts the chain (devex excluded) and demands current envs", () => {
