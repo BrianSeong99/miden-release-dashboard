@@ -1,9 +1,11 @@
 "use client";
 
+import { useRouter } from "next/navigation";
+import { useState } from "react";
 import useSWR from "swr";
 import type { DashboardSnapshot } from "@/lib/types";
 import { BlockerList } from "./blocker-list";
-import { DependencyGraph } from "./dependency-graph";
+import { DependencyDag } from "./dependency-dag";
 import { ManualBadge } from "./manual-badge";
 import { PioneerList } from "./pioneer-list";
 import { ReleaseOverview } from "./release-overview";
@@ -32,13 +34,21 @@ function Section({
 }
 
 export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
+  const router = useRouter();
+  const [version, setVersion] = useState(initial.release.targetVersion);
   // The server snapshot renders immediately; SWR then keeps the page inside
-  // ~1 min of the server's shared 5-minute cache without a reload.
-  const { data } = useSWR("/api/status", fetcher, {
-    fallbackData: initial,
+  // ~1 min of the server's shared per-release 5-minute cache without a
+  // reload. Switching releases fetches that release's snapshot on demand.
+  const { data, isLoading } = useSWR(`/api/status?release=${version}`, fetcher, {
+    fallbackData: version === initial.release.targetVersion ? initial : undefined,
+    keepPreviousData: true,
     refreshInterval: 60_000,
   });
   const snapshot = data ?? initial;
+  const switchRelease = (v: string) => {
+    setVersion(v);
+    router.replace(v === initial.release.targetVersion ? "/" : `/?release=${v}`, { scroll: false });
+  };
   const generated = new Date(snapshot.generatedAt);
   const today = snapshot.generatedAt.slice(0, 10);
 
@@ -58,14 +68,32 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
             </p>
           </div>
         </div>
-        <div className="text-right text-xs text-muted-foreground">
-          <div>
-            Last refresh{" "}
-            <time dateTime={snapshot.generatedAt} suppressHydrationWarning>
-              {generated.toLocaleTimeString()}
-            </time>
+        <div className="flex items-center gap-4">
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Release
+            <select
+              value={version}
+              onChange={(e) => switchRelease(e.target.value)}
+              className="cursor-pointer rounded-lg border bg-card px-2.5 py-1.5 text-sm font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            >
+              {snapshot.releases.map((r) => (
+                <option key={r.targetVersion} value={r.targetVersion}>
+                  v{r.targetVersion}
+                  {r.isDefault ? " (current)" : ""}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="text-right text-xs text-muted-foreground">
+            <div>
+              Last refresh{" "}
+              <time dateTime={snapshot.generatedAt} suppressHydrationWarning>
+                {generated.toLocaleTimeString()}
+              </time>
+              {isLoading && " …"}
+            </div>
+            <div>auto-refreshes every 5 minutes</div>
           </div>
-          <div>auto-refreshes every 5 minutes</div>
         </div>
       </header>
 
@@ -74,7 +102,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       <ReleaseOverview snapshot={snapshot} />
 
       <Section title="Dependency chain">
-        <DependencyGraph components={snapshot.components} devexRollup={snapshot.devexRollup} />
+        <DependencyDag components={snapshot.components} devexRollup={snapshot.devexRollup} pioneers={snapshot.pioneers} />
       </Section>
 
       <Section title="Critical blockers">

@@ -1,5 +1,9 @@
 import { render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
+
+vi.mock("next/navigation", () => ({
+  useRouter: () => ({ replace: vi.fn() }),
+}));
 import type { DashboardSnapshot } from "@/lib/types";
 import { DashboardClient } from "./dashboard-client";
 
@@ -8,18 +12,23 @@ const at = "2026-08-31T12:00:00.000Z";
 const snapshot: DashboardSnapshot = {
   generatedAt: new Date().toISOString(), // fresh so the stale banner stays hidden
   release: { name: "Miden v0.16", targetVersion: "0.16", targetDate: null },
+  releases: [
+    { name: "Miden v0.15", targetVersion: "0.15", isDefault: false },
+    { name: "Miden v0.16", targetVersion: "0.16", isDefault: true },
+    { name: "Miden v0.17", targetVersion: "0.17", isDefault: false },
+  ],
   readiness: { level: "blocked", readyCount: 4, totalCount: 7, criticalBlockerCount: 5 },
   components: [
     {
       id: "vm", label: "Miden VM", repo: "0xMiden/miden-vm", branch: "next", owner: "VM team",
       expectedVersion: "0.30.0", group: "chain", dependsOn: [], status: "stable-released",
       tone: "green", manual: false, reason: "Stable v0.30.0 is published", latestStable: "0.30.0",
-      latestRc: null, deps: [], evidence: [], blockerIds: [], errors: [],
+      latestRc: null, matchedRelease: "0.30.0", deps: [], evidence: [], blockerIds: [], errors: [],
     },
     {
       id: "docs", label: "Docs", repo: "0xMiden/docs", branch: "main", owner: "Brian",
       expectedVersion: "0.16", group: "devex", dependsOn: [], status: "compatible",
-      tone: "green", manual: false, reason: "on train", latestStable: null, latestRc: null,
+      tone: "green", manual: false, reason: "on train", latestStable: null, latestRc: null, matchedRelease: null,
       deps: [], evidence: [], blockerIds: [], errors: [],
     },
   ],
@@ -39,7 +48,7 @@ const snapshot: DashboardSnapshot = {
   blockers: [],
   pioneers: [
     {
-      partner: "NubX", milestone: "m", releaseDependency: "Web SDK 0.16", status: "on-track",
+      partner: "NubX", milestone: "m", releaseDependency: "Web SDK 0.16", dependsOn: ["vm"], status: "on-track",
       tone: "green", owner: "Brian", nextDecisionDate: "2026-09-07",
     },
   ],
@@ -57,5 +66,13 @@ describe("DashboardClient", () => {
     // Pioneers are manual → badge present; automated VM card carries none.
     expect(screen.getAllByText("Manual").length).toBeGreaterThan(0);
     expect(screen.getByText(/No critical blockers/)).toBeInTheDocument();
+  });
+
+  it("renders the release dropdown with the viewed release selected", () => {
+    render(<DashboardClient initial={snapshot} />);
+    const select = screen.getByRole("combobox", { name: "Release" });
+    expect(select).toHaveValue("0.16");
+    const labels = [...select.querySelectorAll("option")].map((o) => o.textContent);
+    expect(labels).toEqual(["v0.15", "v0.16 (current)", "v0.17"]);
   });
 });

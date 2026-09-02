@@ -18,6 +18,7 @@ const base: ComponentStatus = {
   reason: "Prerelease v0.16.0-rc.3 is published",
   latestStable: "0.15.2",
   latestRc: "0.16.0-rc.3",
+  matchedRelease: "0.16.0-rc.3",
   deps: [
     {
       label: "miden-protocol (Cargo.toml)",

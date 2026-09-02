@@ -12,6 +12,7 @@ const ENV_LABEL = {
   current: "Current",
   partial: "Partial",
   behind: "Behind",
+  ahead: "Ahead",
   unknown: "Unknown",
 };
 
