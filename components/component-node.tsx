@@ -75,7 +75,8 @@ export function ComponentNode({ component: c }: { component: ComponentStatus }) 
                   d.onTarget === null && "text-tone-gray",
                 )}
               >
-                {d.version ?? "?"} {d.onTarget === true ? "✓" : d.onTarget === false ? "✗" : ""}
+                {d.version ?? (d.error ? "?" : "absent")}{" "}
+                {d.onTarget === true ? "✓" : d.onTarget === false ? "✗" : ""}
               </span>
             </div>
           ))}

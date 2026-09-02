@@ -4,7 +4,7 @@ import type { ComponentStatus, RollupStatus } from "@/lib/types";
 import { ManualBadge } from "./manual-badge";
 import { StatusBadge, StatusDot } from "./status-badge";
 
-const ROLLUP_LABEL: Record<RollupStatus["status"], string> = {
+export const ROLLUP_LABEL: Record<RollupStatus["status"], string> = {
   ...STATUS_LABEL,
   "in-progress": "In progress",
 };
@@ -14,9 +14,11 @@ const ROLLUP_LABEL: Record<RollupStatus["status"], string> = {
 export function DevexRollup({
   rollup,
   components,
+  defaultOpen = false,
 }: {
   rollup: RollupStatus;
   components: ComponentStatus[];
+  defaultOpen?: boolean;
 }) {
   return (
     <div
@@ -31,7 +33,7 @@ export function DevexRollup({
         <StatusBadge tone={rollup.tone} label={ROLLUP_LABEL[rollup.status]} title={rollup.reason} />
       </div>
       <p className="text-xs text-muted-foreground">{rollup.reason}</p>
-      <details className="group border-t pt-2">
+      <details className="group border-t pt-2" open={defaultOpen || undefined}>
         <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
           <ChevronDown aria-hidden className="size-3.5 transition-transform group-open:rotate-180" />
           Show surfaces
