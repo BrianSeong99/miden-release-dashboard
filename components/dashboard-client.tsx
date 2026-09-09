@@ -52,6 +52,10 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
   useEffect(() => {
     const wanted = new URLSearchParams(window.location.search).get("release");
     if (wanted && initial.releases.some((r) => r.targetVersion === wanted)) {
+      // One-time URL sync on mount. The static export renders the default
+      // release, and reading search params at render time would either blank
+      // the first paint (useSearchParams + Suspense) or mismatch hydration.
+      // eslint-disable-next-line react-hooks/set-state-in-effect
       setVersion(wanted);
     }
   }, [initial.releases]);
