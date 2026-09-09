@@ -40,5 +40,7 @@ npm run lint && npx tsc --noEmit && npm run test:coverage && npm run build
 
 ## Deploy
 
-Vercel, with **Deployment Protection enabled** (internal audience) and `GITHUB_TOKEN` set as a
-server-side environment variable.
+GitHub Pages, fully static: `.github/workflows/pages.yml` regenerates the per-release snapshot
+JSON (`scripts/export-snapshots.ts`) and rebuilds the exported site every 15 minutes on a cron
+(plus every push to `main`). The workflow's built-in `GITHUB_TOKEN` covers the API budget; no
+secrets to configure. Live at https://brianseong99.github.io/miden-release-dashboard/.

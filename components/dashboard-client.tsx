@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import useSWR from "swr";
 import type { BlockerView, DashboardSnapshot } from "@/lib/types";
 import { BlockerList } from "./blocker-list";
@@ -10,6 +10,7 @@ import { ManualBadge } from "./manual-badge";
 import { ReleaseOverview } from "./release-overview";
 import { StaleBanner } from "./stale-banner";
 
+// Relative path so it resolves under the GitHub Pages basePath and locally.
 const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<DashboardSnapshot>);
 
 function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
@@ -46,13 +47,21 @@ function Section({
 export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
   const router = useRouter();
   const [version, setVersion] = useState(initial.release.targetVersion);
-  // The server snapshot renders immediately; SWR then keeps the page inside
-  // ~1 min of the server's shared per-release 5-minute cache without a
-  // reload. Switching releases fetches that release's snapshot on demand.
-  const { data, isLoading } = useSWR(`/api/status?release=${version}`, fetcher, {
+  // Deep links: the exported page is one static shell, so ?release= is read
+  // on the client after mount.
+  useEffect(() => {
+    const wanted = new URLSearchParams(window.location.search).get("release");
+    if (wanted && initial.releases.some((r) => r.targetVersion === wanted)) {
+      setVersion(wanted);
+    }
+  }, [initial.releases]);
+  // The baked snapshot renders immediately; SWR then refreshes from the
+  // per-release JSON the Pages workflow regenerates on a cron. Switching
+  // releases fetches that release's file on demand.
+  const { data, isLoading } = useSWR(`data/${version}.json`, fetcher, {
     fallbackData: version === initial.release.targetVersion ? initial : undefined,
     keepPreviousData: true,
-    refreshInterval: 60_000,
+    refreshInterval: 5 * 60_000,
   });
   const snapshot = data ?? initial;
   const switchRelease = (v: string) => {
@@ -102,7 +111,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
               </time>
               {isLoading && " …"}
             </div>
-            <div>auto-refreshes every 5 minutes</div>
+            <div>rebuilt every 15 minutes</div>
           </div>
         </div>
       </header>
