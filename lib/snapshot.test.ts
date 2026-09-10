@@ -20,9 +20,25 @@ function route(url: string): { body: string; status: number } {
   if (u.hostname.startsWith("status.testnet")) return { body: fixture("env-status-testnet.json"), status: 200 };
   if (u.hostname.startsWith("status.devnet")) return { body: fixture("env-status-devnet.json"), status: 200 };
   if (u.pathname.endsWith("/releases")) return { body: fixture("releases-protocol.json"), status: 200 };
+  if (u.pathname === "/repos/0xMiden/docs/actions/workflows/deploy-docs.yml/runs") {
+    return { body: JSON.stringify({ total_count: 1, workflow_runs: [{
+      id: 123, head_sha: "a".repeat(40), head_branch: "main", status: "completed",
+      conclusion: "success", html_url: "https://github.com/0xMiden/docs/actions/runs/123",
+    }] }), status: 200 };
+  }
+  if (u.pathname === "/repos/0xMiden/docs/actions/runs/123/jobs") {
+    return { body: JSON.stringify({ total_count: 1, jobs: [{
+      status: "completed", conclusion: "success", completed_at: "2026-09-09T12:00:00Z",
+      steps: [{ name: "Deploy to GitHub Pages", status: "completed", conclusion: "success" }],
+    }] }), status: 200 };
+  }
   if (/\/issues\/\d+$/.test(u.pathname)) {
     return {
-      body: JSON.stringify({ state: "open", title: "t", html_url: `https://github.com${u.pathname}` }),
+      body: JSON.stringify({
+        state: "open", title: "t", html_url: `https://github.com${u.pathname}`,
+        pull_request: /\/(docs|tutorials|frontend-template|miden-playground|miden-source-code-verification)\/issues\//.test(u.pathname)
+          ? { merged_at: null } : undefined,
+      }),
       status: 200,
     };
   }
@@ -47,7 +63,13 @@ function route(url: string): { body: string; status: number } {
     if (repo === "0xMiden/protocol") return { body: fixture("protocol-cargo.toml"), status: 200 };
     if (repo === "0xMiden/node") return { body: fixture("node-cargo.toml"), status: 200 };
     if (repo === "0xMiden/wallet") return { body: fixture("wallet-package.json"), status: 200 };
-    if (repo === "0xMiden/docs") return { body: fixture("docs-release-manifest.yml"), status: 200 };
+    if (repo === "0xMiden/docs") {
+      if (file === "versions.json") return { body: '["0.15", "0.14"]', status: 200 };
+      if (file === "versioned_docs/version-0.15") return { body: JSON.stringify([
+        { type: "dir", name: "builder", path: "versioned_docs/version-0.15/builder" },
+      ]), status: 200 };
+      return { body: fixture("docs-release-manifest.yml"), status: 200 };
+    }
     if (repo === "0xMiden/midenup") return { body: fixture("midenup-channel-manifest.json"), status: 200 };
     if (file.endsWith("package.json")) {
       return {
@@ -93,11 +115,11 @@ describe("buildSnapshot", () => {
     expect(byId.get("wallet")?.status).toBe("blocked");
     // Node: rc release + on-train exact pin.
     expect(byId.get("node")?.status).toBe("rc-released");
-    // Docs manifest says next_version 0.16 → compatible.
-    expect(byId.get("docs")?.status).toBe("compatible");
+    // A next_version label is not a snapshot; open migration PRs show progress.
+    expect(byId.get("docs")?.status).toBe("migrating");
     // Agentic template is fully automated via submodule detectors now.
     expect(byId.get("agentic-template")?.manual).toBe(false);
-    expect(byId.get("agentic-template")?.status).toBe("compatible");
+    expect(byId.get("agentic-template")?.status).toBe("prerelease-deps");
     // Walnut surfaces: 0.15 pins + open 0.16 migration PRs -> Migrating.
     expect(byId.get("playground")?.status).toBe("migrating");
     expect(byId.get("source-verification")?.status).toBe("migrating");
@@ -112,6 +134,40 @@ describe("buildSnapshot", () => {
     expect(snap.readiness.criticalBlockerCount).toBe(5);
   });
 
+  it("recognizes active v16 DevEx migration while main dependencies still target v15", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const u = new URL(url);
+      if (/\/repos\/0xMiden\/(tutorials|frontend-template)\/contents\//.test(u.pathname)) {
+        return new Response(u.pathname.endsWith("package.json")
+          ? JSON.stringify({ dependencies: { "@miden-sdk/miden-sdk": "0.15.3" } })
+          : '[dependencies]\nmiden-client = "0.15"\n');
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    const byId = new Map(snap.components.map((c) => [c.id, c]));
+    expect(byId.get("docs")?.status).toBe("migrating");
+    expect(byId.get("tutorials")?.status).toBe("migrating");
+    expect(byId.get("frontend-template")?.status).toBe("migrating");
+    expect(byId.get("project-template")?.status).toBe("prerelease-deps");
+    expect(byId.get("midenup")?.status).toBe("prerelease-deps");
+    expect(byId.get("tutorials")?.evidence.some((e) => e.url.endsWith("/pull/249"))).toBe(true);
+    expect(snap.rollups.find((r) => r.group === "devex")?.rollup.tone).toBe("amber");
+  });
+
+  it("keeps docs in progress when one migration PR closes and another remains open", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/repos/0xMiden/docs/issues/357")) {
+        return new Response(JSON.stringify({ state: "closed", title: "Migration guide", html_url: "https://github.com/0xMiden/docs/pull/357", pull_request: { merged_at: "2026-09-10T09:00:00Z" } }));
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    expect(snap.components.find((c) => c.id === "docs")?.status).toBe("migrating");
+  });
+
   it("builds a past-release view: blockers filtered out, devnet reads ahead", async () => {
     vi.stubGlobal(
       "fetch",
@@ -123,6 +179,7 @@ describe("buildSnapshot", () => {
     const snap = await buildSnapshot("0.15");
     expect(snap.release.targetVersion).toBe("0.15");
     expect(snap.blockers).toHaveLength(0); // all seed blockers gate 0.16
+    expect(snap.components.find((c) => c.id === "docs")?.status).toBe("docs-published");
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
     // Recorded payloads: testnet runs 0.15.0 (current for this view), devnet
     // runs 0.16.0-rc.3 (a newer train -> ahead, not "behind").

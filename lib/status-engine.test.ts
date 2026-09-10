@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ComponentConfig } from "./schema";
+import type { DocsSnapshot } from "./docs-snapshot";
 import {
   deriveComponentStatus,
   deriveGroupRollup,
@@ -158,13 +159,13 @@ describe("deriveComponentStatus precedence", () => {
     expect(s.status).toBe("migrating");
   });
 
-  it("compatible: deps on train with no release detector (docs-style '0.16')", () => {
+  it("compatible: stable dependency versions on train with no release detector", () => {
     const s = deriveComponentStatus(
       evidence({
         config: { ...baseConfig, expectedVersion: "0.16" },
         depFindings: [
           {
-            detector: { type: "yaml-manifest", path: "m.yml", key: "next_version" },
+            detector: { type: "yaml-manifest", path: "m.yml", key: "version" },
             result: found("0.16"),
           },
         ],
@@ -174,7 +175,7 @@ describe("deriveComponentStatus precedence", () => {
     expect(s.tone).toBe("green");
   });
 
-  it("per-detector targetTrain: guardian's 0.17 dep counts for the wallet", () => {
+  it("per-detector targetTrain preserves prerelease status across independent version trains", () => {
     const s = deriveComponentStatus(
       evidence({
         config: { ...baseConfig, expectedVersion: "1.16.0" },
@@ -184,7 +185,8 @@ describe("deriveComponentStatus precedence", () => {
         ],
       }),
     );
-    expect(s.status).toBe("compatible");
+    expect(s.status).toBe("prerelease-deps");
+    expect(s.tone).toBe("amber");
   });
 
   it("vm-edge targetTrain: protocol on miden-core 0.29 counts as on-target", () => {
@@ -228,6 +230,105 @@ describe("deriveComponentStatus precedence", () => {
     expect(s.status).toBe("unknown");
     expect(s.tone).toBe("gray");
     expect(s.errors.length).toBeGreaterThan(0);
+  });
+});
+
+describe("docs publication and DevEx evidence", () => {
+  const docsConfig = {
+    ...baseConfig,
+    id: "docs",
+    label: "Docs",
+    repo: "0xMiden/docs",
+    branch: "main",
+    expectedVersion: "0.16",
+    group: "devex",
+    detectors: [{ type: "docs-snapshot", workflow: "deploy-docs.yml" }],
+  } as ComponentConfig;
+  const snapshot: DocsSnapshot = {
+    version: "0.16",
+    snapshotExists: false,
+    published: false,
+    snapshotUrl: "https://github.com/0xMiden/docs/blob/main/versions.json",
+    deploymentUrl: null,
+    publishedAt: null,
+  };
+  const docsEvidence = (value = snapshot) => Object.assign(
+    evidence({ config: docsConfig, migrationPrOpen: okR(true) }),
+    { docsSnapshot: okR(value) },
+  );
+
+  it("does not count a next_version label as a published docs snapshot", () => {
+    const e = docsEvidence();
+    e.depFindings = [{
+      detector: { type: "yaml-manifest", path: "release.yml", key: "next_version" },
+      result: found("0.16"),
+    }];
+    const s = deriveComponentStatus(e);
+    expect(s.status).toBe("migrating");
+    expect(s.reason).toMatch(/snapshot.*0\.16|0\.16.*snapshot/i);
+    expect(s.matchedRelease).toBeNull();
+    expect(s.evidence).toContainEqual({ label: "Docs snapshot", url: snapshot.snapshotUrl });
+  });
+
+  it("keeps a created snapshot amber until a deployment contains it", () => {
+    const s = deriveComponentStatus(docsEvidence({ ...snapshot, snapshotExists: true }));
+    expect(s.status).toBe("snapshot-created");
+    expect(s.tone).toBe("amber");
+    expect(deriveGroupRollup([s]).tone).toBe("amber");
+  });
+
+  it("marks docs published only from confirmed snapshot deployment evidence", () => {
+    const deploymentUrl = "https://github.com/0xMiden/docs/actions/runs/123";
+    const s = deriveComponentStatus(docsEvidence({
+      ...snapshot, snapshotExists: true, published: true,
+      deploymentUrl, publishedAt: at,
+    }));
+    expect(s.status).toBe("docs-published");
+    expect(s.tone).toBe("green");
+    expect(s.matchedRelease).toBe("0.16");
+    expect(s.matchedPublishedAt).toBe(at);
+    expect(s.evidence).toContainEqual({ label: "Docs deployment", url: deploymentUrl });
+    expect(deriveGroupRollup([s]).tone).toBe("green");
+  });
+
+  it("keeps docs unknown when the configured snapshot evidence is unavailable", () => {
+    for (const docsSnapshot of [undefined, errR("deployment lookup failed")]) {
+      const s = deriveComponentStatus(Object.assign(evidence({ config: docsConfig }), { docsSnapshot }));
+      expect(s.status).toBe("unknown");
+      expect(s.docsSnapshot).toBeNull();
+    }
+  });
+
+  it.each(["0.16.0-alpha.1", "0.16.0-rc.1"])("does not call %s dependency pins stable-compatible", (version) => {
+    const s = deriveComponentStatus(evidence({
+      depFindings: [
+        { detector: cargoDep("miden-client"), result: found(version) },
+        { detector: cargoDep("miden-protocol"), result: found("0.16.0") },
+      ],
+    }));
+    expect(s.status).toBe("prerelease-deps");
+    expect(s.tone).toBe("amber");
+    expect(s.reason).toContain(version);
+    expect(deriveGroupRollup([s]).tone).toBe("amber");
+  });
+
+  it("does not infer compatibility from one successful dependency and one failed source", () => {
+    const s = deriveComponentStatus(evidence({
+      depFindings: [
+        { detector: cargoDep("miden-client"), result: found("0.16.0") },
+        { detector: cargoDep("miden-protocol"), result: errR("timeout") },
+      ],
+    }));
+    expect(s.status).toBe("unknown");
+  });
+
+  it("does not call a migration unstarted when the PR lookup failed", () => {
+    const s = deriveComponentStatus(evidence({
+      migrationPrOpen: errR("migration lookup failed"),
+      depFindings: [{ detector: cargoDep("miden-client"), result: found("0.15.0") }],
+    }));
+    expect(s.status).toBe("unknown");
+    expect(s.errors).toContain("migration lookup failed");
   });
 });
 
@@ -288,6 +389,15 @@ describe("roll-ups", () => {
   const child = (status: ComponentStatus["status"]): ComponentStatus =>
     ({ status, tone: "gray", group: "devex" }) as ComponentStatus;
 
+  it("keeps publication factual while critical docs blockers prevent readiness", () => {
+    const docs = { ...child("docs-published"), id: "docs" };
+    const docsBlocker = { ...blocker("critical", "open"), stage: "docs" };
+    expect(deriveGroupRollup([docs], "DevEx", [docsBlocker]).tone).toBe("red");
+    expect(deriveGroupRollup([docs], "DevEx", [{ ...docsBlocker, stage: "wallet" }]).tone).toBe("green");
+    const readyChain = { ...child("stable-released"), group: "chain" as const };
+    expect(deriveReadiness([readyChain, docs], [{ status: "current" }] as never, 1).level).toBe("blocked");
+  });
+
   it("devex: red > gray > green > amber precedence", () => {
     expect(deriveGroupRollup([child("blocked"), child("unknown")]).tone).toBe("red");
     expect(deriveGroupRollup([child("unknown"), child("compatible")]).tone).toBe("gray");
@@ -299,8 +409,8 @@ describe("roll-ups", () => {
     const mk = (status: ComponentStatus["status"], group: ComponentStatus["group"]): ComponentStatus =>
       ({ status, tone: "gray", group }) as ComponentStatus;
     const envs = [{ status: "current" }, { status: "behind" }] as never;
-    const r = deriveReadiness([mk("rc-released", "chain"), mk("not-started", "devex")], envs, 2);
-    expect(r).toMatchObject({ level: "in-progress", readyCount: 1, totalCount: 1, criticalBlockerCount: 2 });
+    const r = deriveReadiness([mk("rc-released", "chain"), mk("not-started", "devex")], envs, 0);
+    expect(r).toMatchObject({ level: "in-progress", readyCount: 1, totalCount: 1, criticalBlockerCount: 0 });
     const blocked = deriveReadiness([mk("blocked", "chain")], envs, 1);
     expect(blocked.level).toBe("blocked");
     const ready = deriveReadiness(

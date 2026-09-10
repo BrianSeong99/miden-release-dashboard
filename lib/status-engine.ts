@@ -1,4 +1,5 @@
 import type { ComponentConfig, Detector } from "./schema";
+import type { DocsSnapshot } from "./docs-snapshot";
 import {
   beforeTrain,
   compareDesc,
@@ -28,6 +29,10 @@ import type {
 
 export const STATUS_TONE: Record<RepoStatusId, Tone> = {
   "stable-released": "green",
+  "docs-published": "green",
+  "snapshot-created": "amber",
+  "awaiting-snapshot": "amber",
+  "prerelease-deps": "amber",
   compatible: "green",
   "rc-released": "amber",
   migrating: "amber",
@@ -38,6 +43,10 @@ export const STATUS_TONE: Record<RepoStatusId, Tone> = {
 
 export const STATUS_LABEL: Record<RepoStatusId, string> = {
   "stable-released": "Stable released",
+  "docs-published": "Published",
+  "snapshot-created": "Snapshot created",
+  "awaiting-snapshot": "Awaiting snapshot",
+  "prerelease-deps": "Prerelease deps",
   "rc-released": "RC released",
   compatible: "Compatible",
   migrating: "Migrating",
@@ -57,6 +66,10 @@ export const ENV_TONE: Record<EnvStatusId, Tone> = {
 /** Rank used for readiness roll-ups: how far along the release ladder. */
 const STATUS_RANK: Record<RepoStatusId, number> = {
   "stable-released": 6,
+  "docs-published": 6,
+  "snapshot-created": 3,
+  "awaiting-snapshot": 2,
+  "prerelease-deps": 3,
   "rc-released": 5,
   compatible: 4,
   migrating: 3,
@@ -72,6 +85,8 @@ export interface ComponentEvidence {
   depFindings: Array<{ detector: Detector; result: Result<DetectedVersion> }>;
   /** Live state of a configured migration PR, when present. */
   migrationPrOpen: Result<boolean> | null;
+  /** Snapshot contents plus deployment of those contents, for docs only. */
+  docsSnapshot?: Result<DocsSnapshot> | null;
   /** Config blockers for this stage, joined with their live GitHub state. */
   blockers: BlockerView[];
   /** Release-wide target train, e.g. "0.16" — the default for dep detectors. */
@@ -92,7 +107,7 @@ export const GROUP_LABELS: Record<string, string> = {
 function toFindings(e: ComponentEvidence): DepFinding[] {
   const findings: DepFinding[] = [];
   for (const { detector, result } of e.depFindings) {
-    if (detector.type === "github-release" || detector.type === "migration-pr" || detector.type === "manual-override") continue;
+    if (detector.type === "github-release" || detector.type === "docs-snapshot" || detector.type === "migration-pr" || detector.type === "manual-override") continue;
     const targetTrain = depDetectorTrain(detector, e.releaseTargetVersion);
     if (result.ok) {
       const normalized = result.value.raw !== null ? normalizeVersion(result.value.raw) : null;
@@ -164,6 +179,20 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     if (f.error) errors.push(f.error);
   }
   if (e.releases && !e.releases.ok) errors.push(e.releases.error);
+  if (e.migrationPrOpen && !e.migrationPrOpen.ok) errors.push(e.migrationPrOpen.error);
+  if (e.docsSnapshot && !e.docsSnapshot.ok) errors.push(e.docsSnapshot.error);
+  const docsSnapshot = e.docsSnapshot?.ok ? e.docsSnapshot.value : undefined;
+  if (docsSnapshot) {
+    evidence.push({ label: "Docs snapshot", url: docsSnapshot.snapshotUrl });
+    if (docsSnapshot.deploymentUrl) {
+      evidence.push({ label: "Docs deployment", url: docsSnapshot.deploymentUrl });
+    }
+  }
+  for (const d of c.detectors) {
+    if (d.type === "migration-pr") {
+      evidence.push({ label: `Migration PR #${d.number}`, url: `https://github.com/${c.repo}/pull/${d.number}` });
+    }
+  }
 
   const releaseInfo =
     e.releases?.ok === true ? pickReleases(e.releases.value, c.expectedVersion) : null;
@@ -192,8 +221,9 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     dependsOn: c.dependsOn,
     latestStable,
     latestRc,
-    matchedRelease,
-    matchedPublishedAt,
+    matchedRelease: docsSnapshot?.published ? docsSnapshot.version : matchedRelease,
+    matchedPublishedAt: docsSnapshot?.published ? docsSnapshot.publishedAt : matchedPublishedAt,
+    docsSnapshot: c.detectors.some((d) => d.type === "docs-snapshot") ? docsSnapshot ?? null : undefined,
     deps,
     evidence,
     blockerIds: e.blockers.map((b) => b.id),
@@ -220,6 +250,20 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     );
   }
 
+  // A docs target label is only intent. A snapshot must exist on the monitored
+  // branch, and a successful Pages deployment must contain that snapshot.
+  if (c.detectors.some((d) => d.type === "docs-snapshot")) {
+    if (!docsSnapshot) return done("unknown", e.docsSnapshot?.ok === false
+      ? e.docsSnapshot.error : "Docs snapshot evidence is unavailable");
+    if (docsSnapshot.published) return done("docs-published", `Docs snapshot ${docsSnapshot.version} is published`);
+    if (docsSnapshot.snapshotExists) return done("snapshot-created", `Docs snapshot ${docsSnapshot.version} exists; publication is pending`);
+    if (e.migrationPrOpen?.ok === false) return done("unknown", e.migrationPrOpen.error);
+    return done(
+      e.migrationPrOpen?.ok && e.migrationPrOpen.value ? "migrating" : "awaiting-snapshot",
+      `Docs snapshot ${docsSnapshot.version} has not been created${e.migrationPrOpen?.ok && e.migrationPrOpen.value ? "; migration PR is open" : ""}`,
+    );
+  }
+
   // 2. Blocked — an open critical blocker outranks any automated progress.
   //    A blocker whose live state could not be fetched is conservatively
   //    treated as still open (the pill itself shows "unknown").
@@ -236,7 +280,7 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
   }
 
   const succeeded = deps.filter((f) => f.onTarget !== null);
-  const allOnTarget = succeeded.length > 0 && succeeded.every((f) => f.onTarget === true);
+  const allOnTarget = deps.length > 0 && deps.every((f) => f.onTarget === true);
   const someOnTarget = succeeded.some((f) => f.onTarget === true);
 
   // 3. Stable released — a non-prerelease release matching the expected version.
@@ -249,6 +293,12 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     return done("rc-released", `Prerelease ${releaseInfo.rcOnTrain.tagName} is published`);
   }
 
+  // Failed required sources must not turn a partially checked dependency set
+  // green, or imply a migration has not started.
+  if (deps.some((f) => f.onTarget === null) || e.migrationPrOpen?.ok === false) {
+    return done("unknown", errors[0] ?? "A dependency version could not be verified");
+  }
+
   // 5. Migrating — a configured migration PR is open, or deps straddle trains.
   if (e.migrationPrOpen?.ok === true && e.migrationPrOpen.value) {
     return done("migrating", "Migration PR is open");
@@ -259,9 +309,13 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
 
   // 6. Compatible — every proven dependency is on the target train.
   if (allOnTarget) {
+    const prereleases = succeeded.filter((f) => f.version && isPrerelease(f.version));
+    if (prereleases.length > 0) {
+      return done("prerelease-deps", `Dependencies still use prereleases: ${prereleases.map((f) => f.version).join(", ")}`);
+    }
     return done(
       "compatible",
-      `All monitored dependencies are on the ${succeeded[0]?.targetTrain ?? e.releaseTargetVersion} train`,
+      `All monitored dependencies use stable versions on the ${succeeded[0]?.targetTrain ?? e.releaseTargetVersion} train`,
     );
   }
 
@@ -381,8 +435,12 @@ export function deriveEnvStatus(input: {
 
 /** Group roll-up (PRD section 9): red when any member is blocked, gray when
  * any cannot be verified, green when every member is at least compatible. */
-export function deriveGroupRollup(children: ComponentStatus[], label = "DevEx"): RollupStatus {
-  if (children.some((c) => c.status === "blocked")) {
+export function deriveGroupRollup(children: ComponentStatus[], label = "DevEx", blockers: BlockerView[] = []): RollupStatus {
+  const criticalBlocker = blockers.some((b) =>
+    children.some((c) => c.id === b.stage) && b.severity === "critical" &&
+    b.live.state !== "merged" && b.live.state !== "closed",
+  );
+  if (criticalBlocker || children.some((c) => c.status === "blocked")) {
     return { status: "blocked", tone: "red", reason: `A ${label} surface is blocked` };
   }
   if (children.some((c) => c.status === "unknown")) {
@@ -401,7 +459,7 @@ export function deriveReadiness(
 ): Readiness {
   const releaseChain = components.filter((c) => !(c.group in GROUP_LABELS));
   const readyCount = releaseChain.filter((c) => STATUS_RANK[c.status] >= STATUS_RANK["rc-released"]).length;
-  const anyBlocked = components.some((c) => c.status === "blocked");
+  const anyBlocked = openCriticalBlockers > 0 || components.some((c) => c.status === "blocked");
   const allReady =
     releaseChain.length > 0 &&
     readyCount === releaseChain.length &&

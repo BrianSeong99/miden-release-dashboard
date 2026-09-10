@@ -44,8 +44,13 @@ export function ComponentNode({ component: c }: { component: ComponentStatus }) 
 
       <div className="flex flex-col gap-1">
         <VersionRow label="Expected" value={c.expectedVersion} />
-        <VersionRow label="Latest stable" value={c.latestStable} />
-        <VersionRow label="Latest RC" value={c.latestRc} />
+        {c.docsSnapshot !== undefined ? <>
+          <VersionRow label="Snapshot" value={c.docsSnapshot === null ? "Unknown" : c.docsSnapshot.snapshotExists ? c.docsSnapshot.version : "Not created"} />
+          <VersionRow label="Publication" value={c.docsSnapshot === null ? "Unknown" : c.docsSnapshot.published ? "Published" : "Not published"} />
+        </> : <>
+          <VersionRow label="Latest stable" value={c.latestStable} />
+          <VersionRow label="Latest RC" value={c.latestRc} />
+        </>}
       </div>
 
       {c.deps.length > 0 && (
