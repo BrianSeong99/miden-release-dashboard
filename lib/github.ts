@@ -77,6 +77,20 @@ export async function getRawFile(
   return ok(await res.value.text());
 }
 
+/** JSON metadata inside a repository; consumers validate the endpoint shape. */
+export async function getRepoJson(repo: string, path: string): Promise<Result<unknown>> {
+  const res = await safeFetch(`${API}/repos/${repo}/${path}`, {
+    headers: headers("application/vnd.github+json"),
+  });
+  if (!res.ok) return err(res.error);
+  if (!res.value.ok) return err(await ghError(res.value, `${repo}/${path}`));
+  try {
+    return ok(await res.value.json());
+  } catch {
+    return err(`unreadable GitHub JSON for ${repo}/${path}`);
+  }
+}
+
 /** Live state for an issue OR a pull request — the issues endpoint serves
  * both, and `pull_request.merged_at` distinguishes merged from closed without
  * a second round-trip. */

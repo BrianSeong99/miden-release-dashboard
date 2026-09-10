@@ -36,6 +36,28 @@ const base: ComponentStatus = {
 };
 
 describe("ComponentNode", () => {
+  it("keeps docs rows visible when snapshot evidence cannot be fetched", () => {
+    render(<ComponentNode component={{ ...base, id: "docs", label: "Docs", status: "unknown", tone: "gray", docsSnapshot: null }} />);
+    expect(screen.getByText("Snapshot").nextSibling).toHaveTextContent("Unknown");
+    expect(screen.getByText("Publication").nextSibling).toHaveTextContent("Unknown");
+    expect(screen.queryByText("Latest stable")).not.toBeInTheDocument();
+  });
+
+  it("shows snapshot and publication evidence for docs instead of GitHub release rows", () => {
+    render(<ComponentNode component={Object.assign({ ...base, id: "docs", label: "Docs", expectedVersion: "0.16" }, {
+      docsSnapshot: {
+        version: "0.16", snapshotExists: false, published: false,
+        snapshotUrl: "https://github.com/0xMiden/docs/blob/main/versions.json",
+        deploymentUrl: null, publishedAt: null,
+      },
+    })} />);
+    expect(screen.getByText("Snapshot")).toBeInTheDocument();
+    expect(screen.getByText("Not created")).toBeInTheDocument();
+    expect(screen.getByText("Not published")).toBeInTheDocument();
+    expect(screen.queryByText("Latest stable")).not.toBeInTheDocument();
+    expect(screen.queryByText("Latest RC")).not.toBeInTheDocument();
+  });
+
   it("renders versions, owner, dep check and evidence", () => {
     render(<ComponentNode component={base} />);
     expect(screen.getByText("Node")).toBeInTheDocument();

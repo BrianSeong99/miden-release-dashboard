@@ -1,6 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { loadConfig } from "./config";
 import { fetchEnvSnapshot } from "./environments";
+import { getDocsSnapshot } from "./docs-snapshot";
 import { err } from "./fetch-utils";
 import { getIssueState, listReleases } from "./github";
 import { runDepDetector } from "./manifests";
@@ -84,8 +85,9 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
   const components = await Promise.all(
     release.components.map(async (c) => {
       const wantsReleases = c.detectors.some((d) => d.type === "github-release");
-      const migrationPr = c.detectors.find((d) => d.type === "migration-pr");
-      const [releases, depFindings, migrationPrOpen] = await Promise.all([
+      const migrationPrs = c.detectors.filter((d) => d.type === "migration-pr");
+      const docsDetector = c.detectors.find((d) => d.type === "docs-snapshot");
+      const [releases, depFindings, migrationPrOpen, docsSnapshot] = await Promise.all([
         wantsReleases ? listReleases(c.repo) : Promise.resolve(null),
         Promise.all(
           c.detectors.filter(isDepDetector).map(async (detector) => ({
@@ -93,13 +95,15 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
             result: await runDepDetector(c.repo, c.branch, detector),
           })),
         ),
-        migrationPr && migrationPr.type === "migration-pr"
-          ? getIssueState(c.repo, migrationPr.number).then(
-              (r): Result<boolean> =>
-                r.ok
-                  ? { ok: true, value: r.value.state === "open", checkedAt: r.checkedAt }
-                  : err(r.error),
-            )
+        migrationPrs.length > 0
+          ? Promise.all(migrationPrs.map((d) => getIssueState(c.repo, d.number))).then((results): Result<boolean> => {
+              const failure = results.find((r) => !r.ok);
+              if (failure && !failure.ok) return err(failure.error);
+              return { ok: true, value: results.some((r) => r.ok && r.value.isPr && r.value.state === "open"), checkedAt: results[0].checkedAt };
+            })
+          : Promise.resolve(null),
+        docsDetector
+          ? getDocsSnapshot(c.repo, c.branch, c.expectedVersion, docsDetector.workflow)
           : Promise.resolve(null),
       ]);
       return deriveComponentStatus({
@@ -107,6 +111,7 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
         releases,
         depFindings: depFindings as Array<{ detector: Detector; result: Result<DetectedVersion> }>,
         migrationPrOpen,
+        docsSnapshot,
         blockers: blockersByStage.get(c.id) ?? [],
         releaseTargetVersion: release.targetVersion,
       });
@@ -147,7 +152,7 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
     .map(([group, label]) => ({
       group,
       label,
-      rollup: deriveGroupRollup(components.filter((c) => c.group === group), label),
+      rollup: deriveGroupRollup(components.filter((c) => c.group === group), label, blockerViews),
     }));
 
   const openCritical = blockerViews.filter(

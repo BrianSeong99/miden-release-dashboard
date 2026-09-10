@@ -1,9 +1,14 @@
 // Domain types shared across adapters, the status engine, and the UI.
 // Config-file types live in schema.ts (inferred from Zod); these are the
 // runtime/evidence shapes.
+import type { DocsSnapshot } from "./docs-snapshot";
 
 export type RepoStatusId =
   | "stable-released"
+  | "docs-published"
+  | "snapshot-created"
+  | "awaiting-snapshot"
+  | "prerelease-deps"
   | "rc-released"
   | "compatible"
   | "migrating"
@@ -107,6 +112,8 @@ export interface ComponentStatus {
   matchedRelease: string | null;
   /** When the matched release was published (for "rc.7 · 3d ago"). */
   matchedPublishedAt: string | null;
+  /** Versioned docs evidence; null means lookup failed, absent means not monitored. */
+  docsSnapshot?: DocsSnapshot | null;
   deps: DepFinding[];
   evidence: { label: string; url: string }[];
   blockerIds: string[];
@@ -181,4 +188,3 @@ export interface DashboardSnapshot {
   environments: EnvStatusResult[];
   blockers: BlockerView[];
 }
-

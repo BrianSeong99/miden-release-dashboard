@@ -107,9 +107,8 @@ releases:
         group: devex
         dependsOn: [rust-sdk, web-sdk]
         detectors:
-          - type: yaml-manifest
-            path: .release/release-manifest.yml
-            key: version # the published docs version (next_version tracks 0.16)
+          - type: docs-snapshot
+            workflow: deploy-docs.yml
       - id: tutorials
         label: "Tutorials"
         repo: 0xMiden/tutorials
@@ -353,9 +352,12 @@ releases:
         group: devex
         dependsOn: [rust-sdk, web-sdk]
         detectors:
-          - type: yaml-manifest
-            path: .release/release-manifest.yml
-            key: next_version
+          - type: docs-snapshot
+            workflow: deploy-docs.yml
+          - type: migration-pr
+            number: 357
+          - type: migration-pr
+            number: 368
       - id: tutorials
         label: "Tutorials"
         repo: 0xMiden/tutorials
@@ -373,6 +375,8 @@ releases:
             path: web-client/package.json
             dependency: "@miden-sdk/miden-sdk"
             provesComponent: web-sdk
+          - type: migration-pr
+            number: 249
       - id: frontend-template
         label: "Frontend template"
         repo: 0xMiden/frontend-template
@@ -385,6 +389,10 @@ releases:
           - type: npm-dep
             dependency: "@miden-sdk/miden-sdk"
             provesComponent: web-sdk
+          - type: migration-pr
+            number: 28
+          - type: migration-pr
+            number: 29
       - id: project-template
         label: "Project template"
         repo: 0xMiden/project-template
@@ -581,9 +589,8 @@ releases:
         group: devex
         dependsOn: [rust-sdk, web-sdk]
         detectors:
-          - type: yaml-manifest
-            path: .release/release-manifest.yml
-            key: next_version
+          - type: docs-snapshot
+            workflow: deploy-docs.yml
       - id: tutorials
         label: "Tutorials"
         repo: 0xMiden/tutorials

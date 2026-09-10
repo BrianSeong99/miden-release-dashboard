@@ -13,6 +13,10 @@ const trainString = z
 
 export const RepoStatusEnum = z.enum([
   "stable-released",
+  "docs-published",
+  "snapshot-created",
+  "awaiting-snapshot",
+  "prerelease-deps",
   "rc-released",
   "compatible",
   "migrating",
@@ -36,6 +40,10 @@ const dep = {
 
 export const DetectorSchema = z.discriminatedUnion("type", [
   z.strictObject({ type: z.literal("github-release") }),
+  z.strictObject({
+    type: z.literal("docs-snapshot"),
+    workflow: z.string().regex(/^[\w.-]+\.ya?ml$/, "expected a deployment workflow filename"),
+  }),
   z.strictObject({ type: z.literal("cargo-dep"), path: z.string().default("Cargo.toml"), ...dep }),
   z.strictObject({ type: z.literal("npm-dep"), path: z.string().default("package.json"), ...dep }),
   z.strictObject({
