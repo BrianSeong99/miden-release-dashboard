@@ -1,12 +1,17 @@
 # Miden Release Dashboard
 
 Internal dashboard answering **"where is the next Miden release across the dependency chain?"**
-— automated GitHub + network monitoring for VM → Protocol → Node → SDKs → Guardian (OpenZeppelin)
-→ Wallet, with DevEx and Walnut (Playground, Source verification) as roll-up stages, rendered as
-a node-and-edge dependency graph with DevNet/Testnet deployment visibility and curated release
+— automated GitHub + network monitoring for the protocol stack, compiler, debugger, SDKs,
+applications and midenup, with DevEx and Walnut (Playground, Source verification) roll-ups.
+The dependency map also includes DevNet/Testnet deployment visibility and curated release
 blockers. A release dropdown switches between the trains declared in `config/release.yaml`
 (past, current and upcoming). Pins that lag their upstream's newest RC are flagged inline —
 the layered-RC-skew problem the team otherwise reconstructs by hand.
+
+The map uses five horizontal lanes grouped by purpose: Protocol, Build & tooling, SDKs,
+Applications and Developer surfaces. Cards sharing a row or column do not imply a dependency;
+only arrows do. Select a card to isolate its incoming and outgoing connections and inspect its
+evidence. Select it again to restore all connections. Lane labels remain visible while scrolling.
 
 ## How data flows
 
