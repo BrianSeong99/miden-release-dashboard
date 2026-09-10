@@ -8,20 +8,10 @@ import { cn } from "@/lib/utils";
 import { ComponentNode } from "./component-node";
 import { GroupRollup, ROLLUP_LABEL } from "./group-rollup";
 import { StatusDot } from "./status-badge";
+import { dependencyWaypoints, layoutDependencies, NODE_H, NODE_W, type DependencyLane } from "@/lib/dependency-layout";
 
-// Node-and-edge DAG of the release chain. Nodes are compact status chips laid
-// out in dependency layers (computed from config dependsOn, left to right);
-// edges are the actual dependsOn relations, with each roll-up group (DevEx,
-// Walnut) as one aggregate node in a shared final column. Clicking a node
-// opens the full detail card below the graph. Hand-rolled layout — the graph
-// is ~9 fixed nodes, which does not justify a layout library.
-
-const NODE_W = 150;
-const NODE_H = 78;
-const COL_GAP = 40;
-const ROW_GAP = 32;
-const PAD_X = 4;
-const PAD_Y = 52; // headroom for long edges arcing over intermediate columns
+// Functional lanes group purpose. Only configured edges imply dependencies;
+// selecting a component isolates its immediate upstream/downstream relations.
 
 const TONE_TEXT: Record<Tone, string> = {
   green: "text-tone-green",
@@ -41,8 +31,8 @@ interface DagNode {
   manual: boolean;
   /** Labels of upstream dependencies, for the screen-reader summary. */
   depLabels: string[];
-  x: number;
-  y: number;
+  lane: DependencyLane;
+  dependsOn: string[];
 }
 
 interface DagEdge {
@@ -50,25 +40,10 @@ interface DagEdge {
   to: string;
 }
 
-/** Longest-path layering over dependsOn, restricted to the nodes shown. */
-function computeLayers(components: ComponentStatus[]): Map<string, number> {
-  const byId = new Map(components.map((c) => [c.id, c]));
-  const layers = new Map<string, number>();
-  const visiting = new Set<string>();
-  const layerOf = (id: string): number => {
-    const cached = layers.get(id);
-    if (cached !== undefined) return cached;
-    if (visiting.has(id)) return 0; // crossValidate rejects cycles; belt and braces
-    visiting.add(id);
-    const c = byId.get(id);
-    const deps = (c?.dependsOn ?? []).filter((d) => byId.has(d));
-    const layer = deps.length === 0 ? 0 : 1 + Math.max(...deps.map(layerOf));
-    visiting.delete(id);
-    layers.set(id, layer);
-    return layer;
-  };
-  for (const c of components) layerOf(c.id);
-  return layers;
+function laneOf(component: ComponentStatus): DependencyLane {
+  if (["compiler", "debugger"].includes(component.id) || component.group === "toolchain") return "tools";
+  if (component.group === "sdk" || component.group === "app") return component.group;
+  return "protocol";
 }
 
 function displayVersion(c: ComponentStatus): string {
@@ -105,36 +80,6 @@ function buildDag(
   const chainIds = new Set(chain.map((c) => c.id));
   const labelOf = new Map(chain.map((c) => [c.id, c.label]));
 
-  const layers = computeLayers(chain);
-  const rollupCol = Math.max(0, ...layers.values()) + 1;
-
-  // Group nodes into columns, preserving config order within a column; all
-  // roll-up groups stack in one shared final column.
-  const columns = new Map<number, string[]>();
-  for (const c of chain) {
-    const col = layers.get(c.id) ?? 0;
-    columns.set(col, [...(columns.get(col) ?? []), c.id]);
-  }
-  if (rollups.length > 0) {
-    columns.set(rollupCol, rollups.map((r) => r.group));
-  }
-
-  const lastCol = Math.max(...columns.keys());
-  const maxRows = Math.max(...[...columns.values()].map((ids) => ids.length));
-  const canvasH = PAD_Y * 2 + maxRows * NODE_H + (maxRows - 1) * ROW_GAP;
-  const canvasW = PAD_X * 2 + (lastCol + 1) * NODE_W + lastCol * COL_GAP;
-
-  const positions = new Map<string, { x: number; y: number }>();
-  for (const [col, ids] of columns) {
-    const colH = ids.length * NODE_H + (ids.length - 1) * ROW_GAP;
-    ids.forEach((id, row) => {
-      positions.set(id, {
-        x: PAD_X + col * (NODE_W + COL_GAP),
-        y: (canvasH - colH) / 2 + row * (NODE_H + ROW_GAP),
-      });
-    });
-  }
-
   const nodes: DagNode[] = chain.map((c) => {
     // A component on its own version train (Guardian 0.17, Wallet 1.16) gets
     // the train spelled out so its version does not read as a mistake.
@@ -149,7 +94,8 @@ function buildDag(
       tone: c.tone,
       manual: c.manual,
       depLabels: c.dependsOn.filter((d) => chainIds.has(d)).map((d) => labelOf.get(d) ?? d),
-      ...positions.get(c.id)!,
+      lane: laneOf(c),
+      dependsOn: c.dependsOn.filter((id) => chainIds.has(id)),
     };
   });
 
@@ -161,7 +107,6 @@ function buildDag(
   }
 
   // Each roll-up inherits the union of its members' chain dependencies.
-  const allLayers = new Map<string, number>(layers);
   for (const r of rollups) {
     const members = components.filter((c) => c.group === r.group);
     const deps = [
@@ -176,82 +121,24 @@ function buildDag(
       tone: r.rollup.tone,
       manual: false,
       depLabels: deps.map((d) => labelOf.get(d) ?? d),
-      ...positions.get(r.group)!,
+      lane: "surfaces",
+      dependsOn: deps,
     });
     for (const dep of deps) edges.push({ from: dep, to: r.group });
-    allLayers.set(r.group, rollupCol);
   }
 
-  const colExtents = new Map<number, { top: number; bottom: number }>();
-  for (const [col, ids] of columns) {
-    const ys = ids.map((id) => positions.get(id)!.y);
-    colExtents.set(col, { top: Math.min(...ys), bottom: Math.max(...ys) + NODE_H });
-  }
-  return { nodes, edges, canvasW, canvasH, layers: allLayers, colExtents };
+  const layout = layoutDependencies(nodes);
+  const nodeById = new Map(nodes.map((node) => [node.id, node]));
+  return {
+    ...layout,
+    nodes: layout.nodes.map((node) => ({ ...nodeById.get(node.id)!, ...node })),
+    edges,
+  };
 }
 
 function trainOf(version: string): string {
   const [major, minor] = version.split(".");
   return `${major}.${minor}`;
-}
-
-/** Edge path. Adjacent columns connect right-edge to left-edge with a gentle
- * S-curve. An edge spanning further must not disappear behind the nodes in
- * between, and the column gaps are too narrow to complete a climb, so long
- * edges route over the top (or under the bottom): climb, run flat at an apex
- * just clear of the crossed columns, drop. Entry/exit x-offsets are spread by
- * span so parallel arrows into one node do not stack. */
-function edgePath(
-  from: DagNode,
-  to: DagNode,
-  fromCol: number,
-  toCol: number,
-  colExtents: Map<number, { top: number; bottom: number }>,
-  canvasH: number,
-): string {
-  const x1 = from.x + NODE_W;
-  const y1 = from.y + NODE_H / 2;
-  const x2 = to.x;
-  const y2 = to.y + NODE_H / 2;
-  const span = toCol - fromCol;
-  if (span > 1) {
-    const between = [];
-    for (let col = fromCol + 1; col < toCol; col++) {
-      const ext = colExtents.get(col);
-      if (ext) between.push(ext);
-    }
-    if (between.length > 0) {
-      const up = (y1 + y2) / 2 <= canvasH / 2;
-      const apex = up
-        ? Math.max(8, Math.min(...between.map((e) => e.top)) - 14)
-        : Math.min(canvasH - 8, Math.max(...between.map((e) => e.bottom)) + 14);
-      // A node may only exit/enter vertically when it is the outermost row of
-      // its column in the routing direction — an inner row would climb straight
-      // through its sibling. Endpoints already level with the apex also
-      // connect via their side edge.
-      const fromExt = colExtents.get(fromCol);
-      const toExt = colExtents.get(toCol);
-      const fromOuter = up ? from.y === (fromExt?.top ?? from.y) : from.y + NODE_H === (fromExt?.bottom ?? from.y + NODE_H);
-      const toOuter = up ? to.y === (toExt?.top ?? to.y) : to.y + NODE_H === (toExt?.bottom ?? to.y + NODE_H);
-      const sideExit = !fromOuter || (up ? from.y <= apex : from.y + NODE_H >= apex);
-      const sideEntry = !toOuter || (up ? to.y <= apex : to.y + NODE_H >= apex);
-      const sx = sideExit ? x1 : from.x + NODE_W - 16 - span * 4;
-      const sy = sideExit ? y1 : up ? from.y : from.y + NODE_H;
-      const ex = sideEntry ? x2 : to.x + 12 + span * 8;
-      const ey = sideEntry ? y2 : up ? to.y : to.y + NODE_H;
-      // Climb, run flat at the apex, drop — the climb must finish inside the
-      // source's own column, or the line dives behind the first crossed node.
-      const runIn = Math.min(56, (ex - sx) / 3);
-      return [
-        `M ${sx} ${sy}`,
-        `Q ${sx + (sideExit ? runIn * 0.6 : 6)} ${apex} ${sx + runIn} ${apex}`,
-        `L ${ex - runIn} ${apex}`,
-        `Q ${ex - (sideEntry ? runIn * 0.6 : 6)} ${apex} ${ex} ${ey}`,
-      ].join(" ");
-    }
-  }
-  const dx = Math.max(24, (x2 - x1) * 0.45);
-  return `M ${x1} ${y1} C ${x1 + dx} ${y1}, ${x2 - dx} ${y2}, ${x2} ${y2}`;
 }
 
 export function DependencyDag({
@@ -264,7 +151,7 @@ export function DependencyDag({
   targetVersion: string;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
-  const { nodes, edges, canvasW, canvasH, layers, colExtents } = useMemo(
+  const { nodes, edges, width: canvasW, height: canvasH, lanes } = useMemo(
     () => buildDag(components, rollups, targetVersion),
     [components, rollups, targetVersion],
   );
@@ -274,11 +161,17 @@ export function DependencyDag({
 
   return (
     <section aria-label="Dependency graph" className="flex flex-col gap-3">
-      <div className="overflow-x-auto rounded-xl border bg-card/40 pb-1">
+      <p className="text-xs text-muted-foreground">Lanes group components by purpose. Arrows show dependencies.</p>
+      <div tabIndex={0} role="region" aria-label="Scrollable dependency map" className="overflow-x-auto rounded-xl border bg-card/40 focus-visible:outline-2 focus-visible:outline-brand">
         <div className="relative" style={{ width: canvasW, height: canvasH }}>
+          {lanes.map((lane) => (
+            <div key={lane.id} data-testid={`dag-lane-${lane.id}`} className="absolute left-0 w-full border-b last:border-b-0 odd:bg-muted/25" style={{ top: lane.y, height: lane.height }}>
+              <span className="sticky left-0 z-10 flex h-full w-24 items-center bg-background px-3 text-xs font-medium text-muted-foreground">{lane.label}</span>
+            </div>
+          ))}
           <svg
             aria-hidden
-            className="absolute inset-0"
+            className="pointer-events-none absolute inset-0"
             width={canvasW}
             height={canvasH}
             viewBox={`0 0 ${canvasW} ${canvasH}`}
@@ -291,15 +184,21 @@ export function DependencyDag({
                 <path d="M 0 0.5 L 7.5 4 L 0 7.5 z" fill="var(--brand)" />
               </marker>
             </defs>
-            {edges.map((e) => {
+            {edges.map((e, index) => {
               const from = nodeById.get(e.from);
               const to = nodeById.get(e.to);
               if (!from || !to) return null;
               const active = selected !== null && (e.from === selected || e.to === selected);
+              if (selected !== null && !active) return null;
+              const points = dependencyWaypoints(from, to, index);
               return (
                 <path
                   key={`${e.from}->${e.to}`}
-                  d={edgePath(from, to, layers.get(e.from) ?? 0, layers.get(e.to) ?? 0, colExtents, canvasH)}
+                  data-from={e.from}
+                  data-to={e.to}
+                  d={points.map((point, i) => `${i === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")}
+                  opacity={active ? 1 : 0.7}
+                  strokeLinejoin="round"
                   fill="none"
                   stroke={active ? "var(--brand)" : "var(--tone-gray)"}
                   strokeWidth={active ? 2 : 1.5}
@@ -343,7 +242,11 @@ export function DependencyDag({
         </div>
       </div>
 
-      <p className="text-xs text-muted-foreground">Select a node for its versions, owner, blockers and evidence.</p>
+      <p aria-live="polite" className="text-xs text-muted-foreground">
+        {selected && nodeById.has(selected)
+          ? `Showing dependencies into and out of ${nodeById.get(selected)!.label}. Select it again to show all connections.`
+          : "Select a component to isolate its connections and inspect versions, owner, blockers and evidence."}
+      </p>
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground">
         <span className="font-medium">Legend:</span>
         <span className="flex items-center gap-1.5"><StatusDot tone="green" /> compatible or released</span>

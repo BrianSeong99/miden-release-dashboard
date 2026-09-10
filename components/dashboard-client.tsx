@@ -124,7 +124,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
 
       <ReleaseOverview snapshot={snapshot} />
 
-      <Section title="Dependency chain">
+      <Section title="Dependency map">
         <DependencyDag components={snapshot.components} rollups={snapshot.rollups} targetVersion={snapshot.release.targetVersion} />
       </Section>
 

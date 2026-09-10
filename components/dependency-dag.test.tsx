@@ -57,7 +57,7 @@ const dag = () => (
 );
 
 describe("DependencyDag", () => {
-  it.each(["0.16", "0.17"])("shows the %s compiler/debugger topology and an inspectable midenup node", (train) => {
+  it.each(["0.15", "0.16", "0.17"])("shows the %s compiler/debugger topology and an inspectable midenup node", (train) => {
     const release = loadConfig().release.releases.find((r) => r.targetVersion === train)!;
     const configured = release.components.map((c) => comp(c.id, c.group, c.dependsOn, {
       label: c.label, expectedVersion: c.expectedVersion,
@@ -66,8 +66,14 @@ describe("DependencyDag", () => {
     const left = (id: string) => Number.parseFloat(screen.getByTestId(`dag-node-${id}`).style.left);
     expect(left("debugger")).toBeGreaterThan(left("vm"));
     expect(left("rust-sdk")).toBeGreaterThan(left("debugger"));
+    const top = (id: string) => Number.parseFloat(screen.getByTestId(`dag-node-${id}`).style.top);
+    expect(top("compiler")).toBe(top("debugger"));
+    expect(top("midenup")).toBe(top("debugger"));
+    expect(top("debugger")).not.toBe(top("protocol"));
     if (train === "0.17") {
-      expect(left("compiler")).toBe(left("debugger"));
+      // Same-purpose peers have separate positions without an invented edge.
+      expect(left("compiler")).toBeGreaterThan(left("debugger"));
+      expect(document.querySelector('[data-from="debugger"][data-to="compiler"]')).toBeNull();
       expect(screen.getByTestId("dag-node-compiler")).toHaveTextContent("Target version TBD");
     } else expect(left("compiler")).toBeGreaterThan(left("protocol"));
     expect(screen.getByTestId("dag-node-midenup")).toHaveTextContent(`Channel ${train}`);
@@ -94,14 +100,57 @@ describe("DependencyDag", () => {
     expect(paths.length).toBe(15);
   });
 
-  it("lays nodes out in dependency layers, roll-ups stacked in a final column", () => {
+  it("groups components by role, placing peers side by side without linking them", () => {
     render(dag());
     const left = (id: string) =>
       Number.parseFloat(screen.getByTestId(`dag-node-${id}`).style.left);
     expect(left("vm")).toBeLessThan(left("protocol"));
-    expect(left("rust-sdk")).toBe(left("web-sdk"));
-    expect(left("wallet")).toBeLessThan(left("devex"));
-    expect(left("devex")).toBe(left("walnut"));
+    expect(left("rust-sdk")).toBeLessThan(left("web-sdk"));
+    expect(left("devex")).toBeLessThan(left("walnut"));
+    const top = (id: string) => screen.getByTestId(`dag-node-${id}`).style.top;
+    expect(top("vm")).toBe(top("protocol"));
+    expect(top("rust-sdk")).toBe(top("web-sdk"));
+    expect(top("guardian")).toBe(top("wallet"));
+    expect(top("devex")).toBe(top("walnut"));
+    expect(document.querySelector('[data-from="rust-sdk"][data-to="web-sdk"]')).toBeNull();
+    expect(document.querySelector('[data-from="devex"][data-to="walnut"]')).toBeNull();
+  });
+
+
+  it.each(["0.15", "0.16", "0.17"])("keeps %s nodes and dependency paths clear of other cards", (train) => {
+    const release = loadConfig().release.releases.find((r) => r.targetVersion === train)!;
+    const configured = release.components.map((c) => comp(c.id, c.group, c.dependsOn));
+    const { container } = render(<DependencyDag components={configured} rollups={rollups} targetVersion={train} />);
+    const cards = Array.from(container.querySelectorAll<HTMLButtonElement>("button[data-testid^='dag-node-']"))
+      .map((card) => ({ id: card.dataset.testid!.replace("dag-node-", ""), x: parseFloat(card.style.left),
+        y: parseFloat(card.style.top), w: parseFloat(card.style.width), h: parseFloat(card.style.height) }));
+    for (const a of cards) for (const b of cards) {
+      if (a.id === b.id) continue;
+      expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
+    }
+    for (const edge of container.querySelectorAll<SVGPathElement>("path[data-from]")) {
+      const points = Array.from(edge.getAttribute("d")!.matchAll(/[ML] ([\d.]+) ([\d.]+)/g),
+        (match) => ({ x: Number(match[1]), y: Number(match[2]) }));
+      for (let i = 1; i < points.length; i++) {
+        const a = points[i - 1], b = points[i];
+        for (const card of cards) {
+          const intersects = a.x === b.x
+            ? a.x > card.x && a.x < card.x + card.w && Math.max(a.y, b.y) > card.y && Math.min(a.y, b.y) < card.y + card.h
+            : a.y > card.y && a.y < card.y + card.h && Math.max(a.x, b.x) > card.x && Math.min(a.x, b.x) < card.x + card.w;
+          expect(intersects, `${edge.dataset.from} → ${edge.dataset.to} crosses ${card.id}`).toBe(false);
+        }
+      }
+    }
+  });
+
+  it("isolates the selected component's actual edges and restores all on deselection", () => {
+    const { container } = render(dag());
+    fireEvent.click(screen.getByTestId("dag-node-protocol"));
+    const paths = Array.from(container.querySelectorAll<SVGPathElement>("path[data-from]"));
+    expect(paths).toHaveLength(4);
+    expect(paths.every((p) => p.dataset.from === "protocol" || p.dataset.to === "protocol")).toBe(true);
+    fireEvent.click(screen.getByTestId("dag-node-protocol"));
+    expect(container.querySelectorAll("path[data-from]")).toHaveLength(15);
   });
 
   it("spells out a component's own train when it differs from the release", () => {
