@@ -84,8 +84,8 @@ export function ReleaseOverview({ snapshot }: { snapshot: DashboardSnapshot }) {
           <StatusBadge tone={r.tone} label={r.label} />
         </div>
         <div className="mt-1.5 text-xs text-muted-foreground">
-          {snapshot.readiness.readyCount} of {snapshot.readiness.totalCount} chain components at RC or
-          later · roll-up groups tracked separately
+          {snapshot.readiness.readyCount} of {snapshot.readiness.totalCount} release and toolchain stages
+          ready · roll-up groups tracked separately
         </div>
       </Card>
       {snapshot.environments.map((env) => (

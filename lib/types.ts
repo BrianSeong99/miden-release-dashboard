@@ -79,7 +79,7 @@ export interface DepFinding {
   version: string | null;
   raw: string | null;
   /** Train the finding is compared against, e.g. "0.16". */
-  targetTrain: string;
+  targetTrain: string | null;
   /** null = detector failed, so no judgement. */
   onTarget: boolean | null;
   /** Dashboard component this pin tracks (for RC-skew detection). */
@@ -97,8 +97,8 @@ export interface ComponentStatus {
   repo: string;
   branch: string;
   owner: string;
-  expectedVersion: string;
-  group: "chain" | "sdk" | "app" | "devex" | "walnut";
+  expectedVersion: string | null;
+  group: "chain" | "sdk" | "app" | "toolchain" | "devex" | "walnut";
   dependsOn: string[];
   status: RepoStatusId;
   tone: Tone;

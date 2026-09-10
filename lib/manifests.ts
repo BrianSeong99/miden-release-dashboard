@@ -1,5 +1,6 @@
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
+import { z } from "zod";
 import { err, ok } from "./fetch-utils";
 import { blobUrl, getRawFile, getSubmodulePointer } from "./github";
 import type { Detector } from "./schema";
@@ -67,23 +68,33 @@ export function extractMidenupChannelComponent(
   channel: string,
   component: string,
 ): string | null {
-  let doc: unknown;
+  const result = readMidenupChannelComponent(json, channel, component);
+  return result.ok ? result.value : null;
+}
+
+const channelManifestSchema = z.object({
+  channels: z.array(z.object({
+    name: z.string().min(1),
+    components: z.array(z.object({
+      name: z.string().min(1),
+      version: z.object({ kind: z.string(), version: z.string().min(1).optional() }),
+    })),
+  })),
+});
+
+function readMidenupChannelComponent(json: string, channel: string, component: string): Result<string | null> {
+  let doc: z.infer<typeof channelManifestSchema>;
   try {
-    doc = JSON.parse(json);
+    doc = channelManifestSchema.parse(JSON.parse(json));
   } catch {
-    return null;
+    return err("Invalid midenup channel manifest");
   }
-  const channels = (doc as { channels?: unknown }).channels;
-  if (!Array.isArray(channels)) return null;
-  const ch = channels.find(
-    (c: unknown) => typeof c === "object" && c !== null && (c as { name?: unknown }).name === channel,
-  ) as { components?: unknown } | undefined;
-  if (!ch || !Array.isArray(ch.components)) return null;
-  const comp = ch.components.find(
-    (c: unknown) => typeof c === "object" && c !== null && (c as { name?: unknown }).name === component,
-  ) as { version?: { version?: unknown } } | undefined;
-  const v = comp?.version?.version;
-  return typeof v === "string" ? v : null;
+  const comp = doc.channels.find((c) => c.name === channel)?.components.find((c) => c.name === component);
+  if (!comp) return ok(null);
+  if (comp.version.kind !== "registry" || !comp.version.version) {
+    return err(`Cannot verify ${component} in midenup channel ${channel}: no registry version`);
+  }
+  return ok(comp.version.version);
 }
 
 type DepDetector = Extract<
@@ -150,9 +161,12 @@ export async function runDepDetector(
     case "yaml-manifest":
       raw = extractYamlKey(file.value, detector.key);
       break;
-    case "midenup-channel":
-      raw = extractMidenupChannelComponent(file.value, detector.channel, detector.component);
+    case "midenup-channel": {
+      const pin = readMidenupChannelComponent(file.value, detector.channel, detector.component);
+      if (!pin.ok) return pin;
+      raw = pin.value;
       break;
+    }
   }
   // raw === null: the manifest was fetched but the target is absent — that is
   // positive "not started" evidence, not a failure.

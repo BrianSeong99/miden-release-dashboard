@@ -1,5 +1,5 @@
 # Miden release monitoring configuration.
-# Verified against live GitHub + network state on 2026-09-02.
+# Toolchain mapping verified against GitHub and DevRel feedback on 2026-09-10.
 #
 # The dashboard renders one release at a time (switcher in the header);
 # `defaultRelease` is what loads first. NOTE the per-component `branch`:
@@ -38,6 +38,28 @@ releases:
         group: chain
         detectors:
           - type: github-release
+      - id: debugger
+        label: "Debugger"
+        repo: 0xMiden/miden-debug
+        branch: miden-debug-v0.8.1
+        owner: "Paul"
+        expectedVersion: "0.8.0"
+        group: chain
+        dependsOn: [vm]
+        detectors:
+          - type: github-release
+            tagPrefixes: ["v", "miden-debug-v"]
+      - id: compiler
+        label: "Compiler"
+        repo: 0xMiden/compiler
+        branch: v0.9.2
+        owner: "Paul / Dennis"
+        expectedVersion: "0.9.0"
+        group: chain
+        dependsOn: [vm, protocol, debugger]
+        detectors:
+          - type: github-release
+            tagPrefixes: ["v", ""]
       - id: protocol
         label: "Protocol"
         repo: 0xMiden/protocol
@@ -186,9 +208,39 @@ releases:
         branch: main
         owner: "Roman"
         expectedVersion: "0.15"
-        group: devex
-        dependsOn: [rust-sdk, node]
+        group: toolchain
+        dependsOn: [vm, debugger, compiler, protocol, rust-sdk, node]
         detectors:
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: vm
+            provesComponent: vm
+            targetTrain: "0.23"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: core
+            provesComponent: vm
+            targetTrain: "0.23"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: debug
+            provesComponent: debugger
+            targetTrain: "0.8"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: midenc
+            provesComponent: compiler
+            targetTrain: "0.9"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: cargo-miden
+            provesComponent: compiler
+            targetTrain: "0.9"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: protocol
+            provesComponent: protocol
+            targetTrain: "0.15"
           - type: midenup-channel
             channel: "0.15.0"
             component: client
@@ -198,6 +250,26 @@ releases:
             channel: "0.15.0"
             component: node
             provesComponent: node
+            targetTrain: "0.15"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: faucet-client
+            targetTrain: "0.15"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: remote-prover
+            targetTrain: "0.15"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: validator
+            targetTrain: "0.15"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: verify
+            targetTrain: "0.5"
+          - type: midenup-channel
+            channel: "0.15.0"
+            component: ntx-builder
             targetTrain: "0.15"
 
       # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
@@ -252,6 +324,43 @@ releases:
         group: chain
         detectors:
           - type: github-release
+      - id: debugger
+        label: "Debugger"
+        repo: 0xMiden/miden-debug
+        branch: miden-debug-v0.10.3
+        owner: "Paul"
+        expectedVersion: "0.10.0"
+        group: chain
+        dependsOn: [vm]
+        detectors:
+          - type: github-release
+            tagPrefixes: ["v", "miden-debug-v"]
+          - type: cargo-dep
+            dependency: miden-core
+            provesComponent: vm
+            targetTrain: "0.29"
+      - id: compiler
+        label: "Compiler"
+        repo: 0xMiden/compiler
+        branch: main
+        owner: "Paul / Dennis"
+        expectedVersion: "0.10.0"
+        group: chain
+        dependsOn: [vm, protocol, debugger]
+        detectors:
+          - type: github-release
+            tagPrefixes: ["v", ""]
+          - type: cargo-dep
+            dependency: miden-core
+            provesComponent: vm
+            targetTrain: "0.29"
+          - type: cargo-dep
+            dependency: miden-protocol
+            provesComponent: protocol
+          - type: cargo-dep
+            dependency: miden-debug
+            provesComponent: debugger
+            targetTrain: "0.10"
       - id: protocol
         label: "Protocol"
         repo: 0xMiden/protocol
@@ -286,7 +395,7 @@ releases:
         owner: "Wiktor"
         expectedVersion: "0.16.0"
         group: sdk
-        dependsOn: [protocol, node]
+        dependsOn: [protocol, node, debugger]
         detectors:
           - type: github-release
           - type: cargo-dep
@@ -296,6 +405,10 @@ releases:
           - type: cargo-dep
             dependency: miden-node-proto-build
             provesComponent: node
+          - type: cargo-dep
+            dependency: miden-debug
+            provesComponent: debugger
+            targetTrain: "0.10"
       - id: web-sdk
         label: "Web SDK"
         repo: 0xMiden/web-sdk
@@ -439,17 +552,73 @@ releases:
         branch: main
         owner: "Roman"
         expectedVersion: "0.16"
-        group: devex
-        dependsOn: [rust-sdk, node]
+        group: toolchain
+        dependsOn: [vm, debugger, compiler, protocol, rust-sdk, node]
         detectors:
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: vm
+            provesComponent: vm
+            targetTrain: "0.29"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: core
+            provesComponent: vm
+            targetTrain: "0.29"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: debug
+            provesComponent: debugger
+            targetTrain: "0.10"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: midenc
+            provesComponent: compiler
+            targetTrain: "0.10"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: cargo-miden
+            provesComponent: compiler
+            targetTrain: "0.10"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: protocol
+            provesComponent: protocol
+            targetTrain: "0.16"
           - type: midenup-channel
             channel: "0.16.0"
             component: client
             provesComponent: rust-sdk
+            targetTrain: "0.16"
           - type: midenup-channel
             channel: "0.16.0"
             component: node
             provesComponent: node
+            targetTrain: "0.16"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: faucet-client
+            targetTrain: "0.16"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: remote-prover
+            targetTrain: "0.16"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: validator
+            targetTrain: "0.16"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: verify
+            targetTrain: "0.5"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: format
+            targetTrain: "0.29"
+          - type: midenup-channel
+            channel: "0.16.0"
+            component: local-registry
+            targetTrain: "0.29"
 
       # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
       # or tags on these repos; version comes from manifests on main. NOTE:
@@ -501,10 +670,40 @@ releases:
         repo: 0xMiden/miden-vm
         branch: next
         owner: "VM team"
-        expectedVersion: "0.31.0" # DRAFT: vm next is 0.31; protocol has not adopted it yet
+        expectedVersion: "0.32.0" # protocol next and debugger 0.15 consume VM 0.32
         group: chain
         detectors:
           - type: github-release
+      - id: debugger
+        label: "Debugger"
+        repo: 0xMiden/miden-debug
+        branch: next
+        owner: "Paul"
+        expectedVersion: "0.15.0"
+        group: chain
+        dependsOn: [vm]
+        detectors:
+          - type: github-release
+            tagPrefixes: ["v", "miden-debug-v"]
+          - type: cargo-dep
+            dependency: miden-core
+            provesComponent: vm
+            targetTrain: "0.32"
+      - id: compiler
+        label: "Compiler"
+        repo: 0xMiden/compiler
+        branch: next
+        owner: "Paul / Dennis"
+        expectedVersion: null # v17 compiler release version has not been confirmed
+        group: chain
+        dependsOn: [vm]
+        detectors:
+          - type: github-release
+            tagPrefixes: ["v", ""]
+          - type: cargo-dep
+            dependency: miden-core
+            provesComponent: vm
+            targetTrain: "0.32"
       - id: protocol
         label: "Protocol"
         repo: 0xMiden/protocol
@@ -535,12 +734,16 @@ releases:
         owner: "Wiktor"
         expectedVersion: "0.17.0"
         group: sdk
-        dependsOn: [protocol, node]
+        dependsOn: [protocol, node, debugger]
         detectors:
           - type: github-release
           - type: cargo-dep
             dependency: miden-protocol
             provesComponent: protocol
+          - type: cargo-dep
+            dependency: miden-debug
+            provesComponent: debugger
+            targetTrain: "0.15"
       - id: web-sdk
         label: "Web SDK"
         repo: 0xMiden/web-sdk
@@ -662,13 +865,74 @@ releases:
         branch: main
         owner: "Roman"
         expectedVersion: "0.17"
-        group: devex
-        dependsOn: [rust-sdk, node]
+        group: toolchain
+        dependsOn: [vm, debugger, compiler, protocol, rust-sdk, node]
         detectors:
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: vm
+            provesComponent: vm
+            targetTrain: "0.32"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: core
+            provesComponent: vm
+            targetTrain: "0.32"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: debug
+            provesComponent: debugger
+            targetTrain: "0.15"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: midenc
+            provesComponent: compiler
+            targetTrain: null # compiler target unconfirmed
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: cargo-miden
+            provesComponent: compiler
+            targetTrain: null # compiler target unconfirmed
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: protocol
+            provesComponent: protocol
+            targetTrain: "0.17"
           - type: midenup-channel
             channel: "0.17.0"
             component: client
             provesComponent: rust-sdk
+            targetTrain: "0.17"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: node
+            provesComponent: node
+            targetTrain: "0.17"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: faucet-client
+            targetTrain: "0.17"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: remote-prover
+            targetTrain: "0.17"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: validator
+            targetTrain: "0.17"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: verify
+            targetTrain: "0.5"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: format
+            targetTrain: "0.32"
+          - type: midenup-channel
+            channel: "0.17.0"
+            component: local-registry
+            targetTrain: "0.32"
+
       # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
       # or tags on these repos; version comes from manifests on main. NOTE:
       # never infer the Miden train from @openzeppelin/miden-multisig-client —

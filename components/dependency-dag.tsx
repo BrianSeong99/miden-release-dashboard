@@ -72,6 +72,8 @@ function computeLayers(components: ComponentStatus[]): Map<string, number> {
 }
 
 function displayVersion(c: ComponentStatus): string {
+  if (c.group === "toolchain") return `Channel ${c.expectedVersion ?? "TBD"}`;
+  if (c.expectedVersion === null) return "Target version TBD";
   // The release/RC on this view's train beats global latest — leftover RCs
   // (and, on past-release views, newer trains) must not mask what shipped.
   return (
@@ -136,12 +138,12 @@ function buildDag(
   const nodes: DagNode[] = chain.map((c) => {
     // A component on its own version train (Guardian 0.17, Wallet 1.16) gets
     // the train spelled out so its version does not read as a mistake.
-    const ownTrain = !onTrain(c.expectedVersion, targetVersion);
+    const ownTrain = c.expectedVersion !== null && !onTrain(c.expectedVersion, targetVersion);
     const version = displayVersion(c);
     return {
       id: c.id,
       label: c.label,
-      version: ownTrain ? `${version} · ${trainOf(c.expectedVersion)} train` : version,
+      version: ownTrain && c.expectedVersion ? `${version} · ${trainOf(c.expectedVersion)} train` : version,
       age: relativeAge(c.matchedPublishedAt),
       statusLabel: STATUS_LABEL[c.status],
       tone: c.tone,

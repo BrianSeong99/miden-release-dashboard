@@ -4,6 +4,7 @@ import {
   beforeTrain,
   compareDesc,
   isPrerelease,
+  matchesReleaseTag,
   normalizeVersion,
   onTrain,
 } from "./semver-utils";
@@ -93,8 +94,8 @@ export interface ComponentEvidence {
   releaseTargetVersion: string;
 }
 
-function depDetectorTrain(detector: Detector, fallback: string): string {
-  if ("targetTrain" in detector && detector.targetTrain) return detector.targetTrain;
+function depDetectorTrain(detector: Detector, fallback: string): string | null {
+  if ("targetTrain" in detector && detector.targetTrain !== undefined) return detector.targetTrain;
   return fallback;
 }
 
@@ -121,7 +122,7 @@ function toFindings(e: ComponentEvidence): DepFinding[] {
         // Absent (raw null) is definitively not on target; an unparseable
         // version string yields no judgement.
         onTarget:
-          result.value.raw === null ? false : normalized !== null ? onTrain(normalized, targetTrain) : null,
+          result.value.raw === null ? false : normalized !== null && targetTrain !== null ? onTrain(normalized, targetTrain) : null,
         url: result.value.url,
       });
     } else {
@@ -155,7 +156,7 @@ function detectorSummary(d: Detector): string {
   }
 }
 
-function pickReleases(releases: GhRelease[], expected: string) {
+function pickReleases(releases: GhRelease[], expected: string | null) {
   const sorted = [...releases].sort((a, b) => compareDesc(a.tagName, b.tagName));
   const latestStable = sorted.find((r) => !r.prerelease && !isPrerelease(r.tagName)) ?? null;
   const latestRc = sorted.find((r) => r.prerelease || isPrerelease(r.tagName)) ?? null;
@@ -194,8 +195,10 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     }
   }
 
-  const releaseInfo =
-    e.releases?.ok === true ? pickReleases(e.releases.value, c.expectedVersion) : null;
+  const releaseDetector = c.detectors.find((d) => d.type === "github-release");
+  const releaseInfo = e.releases?.ok === true
+    ? pickReleases(e.releases.value.filter((r) => matchesReleaseTag(r.tagName, releaseDetector?.tagPrefixes)), c.expectedVersion)
+    : null;
   const latestStable = releaseInfo?.latestStable
     ? normalizeVersion(releaseInfo.latestStable.tagName)
     : null;
@@ -296,7 +299,8 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
   // Failed required sources must not turn a partially checked dependency set
   // green, or imply a migration has not started.
   if (deps.some((f) => f.onTarget === null) || e.migrationPrOpen?.ok === false) {
-    return done("unknown", errors[0] ?? "A dependency version could not be verified");
+    return done("unknown", errors[0] ?? (deps.some((f) => f.targetTrain === null)
+      ? "A dependency target version is not yet confirmed" : "A dependency version could not be verified"));
   }
 
   // 5. Migrating — a configured migration PR is open, or deps straddle trains.
@@ -309,13 +313,14 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
 
   // 6. Compatible — every proven dependency is on the target train.
   if (allOnTarget) {
+    if (c.expectedVersion === null) return done("unknown", "Target release version is not yet confirmed");
     const prereleases = succeeded.filter((f) => f.version && isPrerelease(f.version));
     if (prereleases.length > 0) {
       return done("prerelease-deps", `Dependencies still use prereleases: ${prereleases.map((f) => f.version).join(", ")}`);
     }
     return done(
       "compatible",
-      `All monitored dependencies use stable versions on the ${succeeded[0]?.targetTrain ?? e.releaseTargetVersion} train`,
+      "All monitored dependencies use stable versions on their target trains",
     );
   }
 
@@ -335,7 +340,7 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
         : "Monitored dependencies still point at a previous release",
     );
   }
-  if (succeeded.length === 0 && releaseInfo && e.releases?.ok) {
+  if (succeeded.length === 0 && releaseInfo && e.releases?.ok && c.expectedVersion !== null) {
     return done("not-started", `No release on the ${c.expectedVersion} train yet`);
   }
 
@@ -458,7 +463,8 @@ export function deriveReadiness(
   openCriticalBlockers: number,
 ): Readiness {
   const releaseChain = components.filter((c) => !(c.group in GROUP_LABELS));
-  const readyCount = releaseChain.filter((c) => STATUS_RANK[c.status] >= STATUS_RANK["rc-released"]).length;
+  const readyCount = releaseChain.filter((c) => STATUS_RANK[c.status] >=
+    STATUS_RANK[c.group === "toolchain" ? "compatible" : "rc-released"]).length;
   const anyBlocked = openCriticalBlockers > 0 || components.some((c) => c.status === "blocked");
   const allReady =
     releaseChain.length > 0 &&

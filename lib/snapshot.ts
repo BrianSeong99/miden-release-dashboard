@@ -1,7 +1,7 @@
 import { unstable_cache } from "next/cache";
 import { loadConfig } from "./config";
 import { fetchEnvSnapshot } from "./environments";
-import { getDocsSnapshot } from "./docs-snapshot";
+import { getDocsSnapshot, type DocsSnapshot } from "./docs-snapshot";
 import { err } from "./fetch-utils";
 import { getIssueState, listReleases } from "./github";
 import { runDepDetector } from "./manifests";
@@ -103,7 +103,8 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
             })
           : Promise.resolve(null),
         docsDetector
-          ? getDocsSnapshot(c.repo, c.branch, c.expectedVersion, docsDetector.workflow)
+          ? c.expectedVersion === null ? Promise.resolve(err<DocsSnapshot>("Docs target version is not configured"))
+            : getDocsSnapshot(c.repo, c.branch, c.expectedVersion, docsDetector.workflow)
           : Promise.resolve(null),
       ]);
       return deriveComponentStatus({

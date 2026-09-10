@@ -104,7 +104,7 @@ describe("buildSnapshot", () => {
     expect(snap.release.name).toBe("Miden v0.16");
     expect(snap.releases.map((r) => r.targetVersion)).toEqual(["0.15", "0.16", "0.17"]);
     expect(snap.releases.find((r) => r.isDefault)?.targetVersion).toBe("0.16");
-    expect(snap.components).toHaveLength(15);
+    expect(snap.components).toHaveLength(17);
     expect(snap.blockers).toHaveLength(10);
     expect(snap.environments).toHaveLength(2);
     expect(snap.rollups.map((r) => r.group)).toEqual(["devex", "walnut"]);
@@ -192,7 +192,7 @@ describe("buildSnapshot", () => {
       vi.fn(async () => new Response("{}", { status: 500 })),
     );
     const snap = await buildSnapshot();
-    expect(snap.components).toHaveLength(15);
+    expect(snap.components).toHaveLength(17);
     for (const c of snap.components) {
       // Blockers' live state is unknown → conservatively blocking for critical
       // stages; everything else has no evidence → unknown. Manual stays manual.
