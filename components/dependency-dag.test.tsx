@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 import type { ComponentStatus, GroupRollupView } from "@/lib/types";
 import { DependencyDag } from "./dependency-dag";
+import { loadConfig } from "@/lib/config";
 
 const comp = (
   id: string,
@@ -56,6 +57,25 @@ const dag = () => (
 );
 
 describe("DependencyDag", () => {
+  it.each(["0.16", "0.17"])("shows the %s compiler/debugger topology and an inspectable midenup node", (train) => {
+    const release = loadConfig().release.releases.find((r) => r.targetVersion === train)!;
+    const configured = release.components.map((c) => comp(c.id, c.group, c.dependsOn, {
+      label: c.label, expectedVersion: c.expectedVersion,
+    }));
+    render(<DependencyDag components={configured} rollups={rollups} targetVersion={train} />);
+    const left = (id: string) => Number.parseFloat(screen.getByTestId(`dag-node-${id}`).style.left);
+    expect(left("debugger")).toBeGreaterThan(left("vm"));
+    expect(left("rust-sdk")).toBeGreaterThan(left("debugger"));
+    if (train === "0.17") {
+      expect(left("compiler")).toBe(left("debugger"));
+      expect(screen.getByTestId("dag-node-compiler")).toHaveTextContent("Target version TBD");
+    } else expect(left("compiler")).toBeGreaterThan(left("protocol"));
+    expect(screen.getByTestId("dag-node-midenup")).toHaveTextContent(`Channel ${train}`);
+    fireEvent.click(screen.getByTestId("dag-node-midenup"));
+    expect(screen.getByTestId("dag-detail")).toHaveTextContent("Channel");
+    expect(screen.getByTestId("dag-detail")).not.toHaveTextContent("Latest stable");
+  });
+
   it("renders one node per chain component plus each roll-up group", () => {
     render(dag());
     for (const id of ["vm", "protocol", "node", "rust-sdk", "web-sdk", "guardian", "wallet", "devex", "walnut"]) {

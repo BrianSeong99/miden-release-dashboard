@@ -1,11 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   extractCargoDependency,
   extractMidenupChannelComponent,
   extractNpmDependency,
   extractYamlKey,
+  runDepDetector,
 } from "./manifests";
 
 const fixture = (name: string) =>
@@ -26,6 +27,24 @@ describe("extractCargoDependency", () => {
   it("returns null when absent or unparseable", () => {
     expect(extractCargoDependency(fixture("node-cargo.toml"), "nonexistent")).toBeNull();
     expect(extractCargoDependency("not [ toml", "foo")).toBeNull();
+  });
+});
+
+describe("midenup evidence failures", () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const detector = { type: "midenup-channel", path: "manifest/channel-manifest.json", channel: "0.16.0", component: "client" } as const;
+
+  it.each(["null", "not-json", '{}', '{"channels":{}}', JSON.stringify({ channels: [{ name: "0.16.0", components: [{ name: "client", version: { kind: "git", revision: "abc123" } }] }] })])(
+    "returns Unknown evidence for an invalid or unverifiable channel manifest: %s", async (body) => {
+      vi.stubGlobal("fetch", async () => new Response(body));
+      const result = await runDepDetector("0xMiden/midenup", "main", detector);
+      expect(result.ok).toBe(false);
+    },
+  );
+
+  it("distinguishes a missing channel from a broken manifest", async () => {
+    vi.stubGlobal("fetch", async () => new Response('{"channels":[]}'));
+    expect(await runDepDetector("0xMiden/midenup", "main", detector)).toMatchObject({ ok: true, value: { raw: null } });
   });
 });
 

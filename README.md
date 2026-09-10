@@ -35,6 +35,23 @@ the layered-RC-skew problem the team otherwise reconstructs by hand.
 - **Blockers:** docs publication remains factual; open critical blockers still prevent
   green group and release readiness.
 
+## Compiler, debugger and toolchains
+
+Compiler and debugger releases have independent version lines. The v0.16 view tracks
+compiler 0.10 and debugger 0.10 against VM 0.29; the v0.17 view tracks debugger 0.15
+against VM 0.32. The v0.17 compiler target remains TBD until confirmed. GitHub release
+tag prefixes distinguish these products from SDK/template and debugger subcrate releases.
+
+The graph includes debugger → Rust SDK as a release dependency. In v0.16, compiler
+also depends on protocol and debugger; v0.17 places compiler and debugger directly
+after VM, following the planned release topology. Monitored Cargo pins still expose
+whether the source has migrated to that topology.
+
+midenup is a separate toolchain node, with per-channel compiler, debugger, VM, protocol,
+SDK/client, node and supporting-tool pins. Each pin is checked against its own expected
+version line. An absent channel cannot be ready, and alpha/RC pins remain amber.
+These checks describe the configured distribution; they do not run tool installation tests.
+
 ## Develop
 
 ```

@@ -34,12 +34,12 @@ export const EnvStatusEnum = z.enum(["current", "partial", "behind", "ahead", "u
  * RC-skew detection (pin on-train but older than the upstream's latest RC). */
 const dep = {
   dependency: z.string().min(1),
-  targetTrain: trainString.optional(),
+  targetTrain: trainString.nullable().optional(),
   provesComponent: z.string().optional(),
 };
 
 export const DetectorSchema = z.discriminatedUnion("type", [
-  z.strictObject({ type: z.literal("github-release") }),
+  z.strictObject({ type: z.literal("github-release"), tagPrefixes: z.array(z.string()).min(1).optional() }),
   z.strictObject({
     type: z.literal("docs-snapshot"),
     workflow: z.string().regex(/^[\w.-]+\.ya?ml$/, "expected a deployment workflow filename"),
@@ -50,14 +50,14 @@ export const DetectorSchema = z.discriminatedUnion("type", [
     type: z.literal("yaml-manifest"),
     path: z.string().min(1),
     key: z.string().min(1),
-    targetTrain: trainString.optional(),
+    targetTrain: trainString.nullable().optional(),
   }),
   z.strictObject({
     type: z.literal("midenup-channel"),
     path: z.string().default("manifest/channel-manifest.json"),
     channel: z.string().min(1),
     component: z.string().min(1),
-    targetTrain: trainString.optional(),
+    targetTrain: trainString.nullable().optional(),
     provesComponent: z.string().optional(),
   }),
   z.strictObject({
@@ -88,8 +88,8 @@ export const ComponentSchema = z.strictObject({
   repo: z.string().regex(repoPattern),
   branch: z.string().min(1),
   owner: z.string().min(1),
-  expectedVersion: trainString,
-  group: z.enum(["chain", "sdk", "app", "devex", "walnut"]),
+  expectedVersion: trainString.nullable(),
+  group: z.enum(["chain", "sdk", "app", "toolchain", "devex", "walnut"]),
   dependsOn: z.array(z.string()).default([]),
   detectors: z.array(DetectorSchema).min(1),
 });

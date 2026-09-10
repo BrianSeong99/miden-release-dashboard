@@ -14,7 +14,8 @@ export function normalizeVersion(raw: string): string | null {
 /** True when `version` sits on the `train` release line (major.minor equal).
  * `train` may be "0.16", "0.16.0" or "1.16.0". Prereleases count:
  * 0.16.0-rc.4 is on the 0.16 train. */
-export function onTrain(version: string, train: string): boolean {
+export function onTrain(version: string, train: string | null): boolean {
+  if (train === null) return false;
   const v = normalizeVersion(version);
   const t = normalizeVersion(train);
   if (!v || !t) return false;
@@ -25,7 +26,8 @@ export function onTrain(version: string, train: string): boolean {
 }
 
 /** True when `version` is on an EARLIER train than `train`. */
-export function beforeTrain(version: string, train: string): boolean {
+export function beforeTrain(version: string, train: string | null): boolean {
+  if (train === null) return false;
   const v = normalizeVersion(version);
   const t = normalizeVersion(train);
   if (!v || !t) return false;
@@ -56,4 +58,11 @@ export function compareDesc(a: string, b: string): number {
   if (!na) return 1;
   if (!nb) return -1;
   return semver.rcompare(na, nb);
+}
+
+/** Restrict multi-product repositories to the release tags for one product. */
+export function matchesReleaseTag(tag: string, prefixes?: string[]): boolean {
+  return prefixes === undefined || prefixes.some((prefix) =>
+    tag.startsWith(prefix) && semver.valid(tag.slice(prefix.length)) !== null,
+  );
 }
