@@ -5,6 +5,7 @@ import { STATUS_LABEL } from "@/lib/status-engine";
 import { onTrain } from "@/lib/semver-utils";
 import type { ComponentStatus, GroupRollupView, Tone } from "@/lib/types";
 import { cn } from "@/lib/utils";
+import { useHydratedClock } from "@/lib/use-hydrated-clock";
 import { ComponentNode } from "./component-node";
 import { GroupRollup, ROLLUP_LABEL } from "./group-rollup";
 import { StatusDot } from "./status-badge";
@@ -60,9 +61,9 @@ function displayVersion(c: ComponentStatus): string {
   );
 }
 
-function relativeAge(iso: string | null): string | null {
+function relativeAge(iso: string | null, now: number): string | null {
   if (!iso) return null;
-  const ms = Date.now() - new Date(iso).getTime();
+  const ms = now - new Date(iso).getTime();
   if (!Number.isFinite(ms) || ms < 0) return null;
   const days = Math.floor(ms / 86_400_000);
   if (days === 0) return "today";
@@ -75,6 +76,7 @@ function buildDag(
   components: ComponentStatus[],
   rollups: GroupRollupView[],
   targetVersion: string,
+  now: number,
 ) {
   const chain = components.filter((c) => !rollups.some((r) => r.group === c.group));
   const chainIds = new Set(chain.map((c) => c.id));
@@ -89,7 +91,7 @@ function buildDag(
       id: c.id,
       label: c.label,
       version: ownTrain && c.expectedVersion ? `${version} · ${trainOf(c.expectedVersion)} train` : version,
-      age: relativeAge(c.matchedPublishedAt),
+      age: relativeAge(c.matchedPublishedAt, now),
       statusLabel: STATUS_LABEL[c.status],
       tone: c.tone,
       manual: c.manual,
@@ -145,15 +147,18 @@ export function DependencyDag({
   components,
   rollups,
   targetVersion,
+  generatedAt,
 }: {
   components: ComponentStatus[];
   rollups: GroupRollupView[];
   targetVersion: string;
+  generatedAt: string;
 }) {
   const [selected, setSelected] = useState<string | null>(null);
+  const now = useHydratedClock(generatedAt);
   const { nodes, edges, width: canvasW, height: canvasH, lanes } = useMemo(
-    () => buildDag(components, rollups, targetVersion),
-    [components, rollups, targetVersion],
+    () => buildDag(components, rollups, targetVersion, now),
+    [components, rollups, targetVersion, now],
   );
   const nodeById = new Map(nodes.map((n) => [n.id, n]));
   const selectedComponent = components.find((c) => c.id === selected);

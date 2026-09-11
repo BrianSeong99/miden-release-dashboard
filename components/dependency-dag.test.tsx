@@ -1,5 +1,7 @@
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it } from "vitest";
+import { act, fireEvent, render, screen } from "@testing-library/react";
+import { hydrateRoot, type Root } from "react-dom/client";
+import { renderToString } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
 import type { ComponentStatus, GroupRollupView } from "@/lib/types";
 import { DependencyDag } from "./dependency-dag";
 import { loadConfig } from "@/lib/config";
@@ -53,7 +55,7 @@ const rollups: GroupRollupView[] = [
 ];
 
 const dag = () => (
-  <DependencyDag components={components} rollups={rollups} targetVersion="0.16" />
+  <DependencyDag components={components} rollups={rollups} targetVersion="0.16" generatedAt="2026-08-31T12:00:00Z" />
 );
 
 describe("DependencyDag", () => {
@@ -62,7 +64,7 @@ describe("DependencyDag", () => {
     const configured = release.components.map((c) => comp(c.id, c.group, c.dependsOn, {
       label: c.label, expectedVersion: c.expectedVersion,
     }));
-    render(<DependencyDag components={configured} rollups={rollups} targetVersion={train} />);
+    render(<DependencyDag components={configured} rollups={rollups} targetVersion={train} generatedAt="2026-08-31T12:00:00Z" />);
     const left = (id: string) => Number.parseFloat(screen.getByTestId(`dag-node-${id}`).style.left);
     expect(left("debugger")).toBeGreaterThan(left("vm"));
     expect(left("rust-sdk")).toBeGreaterThan(left("debugger"));
@@ -120,7 +122,7 @@ describe("DependencyDag", () => {
   it.each(["0.15", "0.16", "0.17"])("keeps %s nodes and dependency paths clear of other cards", (train) => {
     const release = loadConfig().release.releases.find((r) => r.targetVersion === train)!;
     const configured = release.components.map((c) => comp(c.id, c.group, c.dependsOn));
-    const { container } = render(<DependencyDag components={configured} rollups={rollups} targetVersion={train} />);
+    const { container } = render(<DependencyDag components={configured} rollups={rollups} targetVersion={train} generatedAt="2026-08-31T12:00:00Z" />);
     const cards = Array.from(container.querySelectorAll<HTMLButtonElement>("button[data-testid^='dag-node-']"))
       .map((card) => ({ id: card.dataset.testid!.replace("dag-node-", ""), x: parseFloat(card.style.left),
         y: parseFloat(card.style.top), w: parseFloat(card.style.width), h: parseFloat(card.style.height) }));
@@ -189,5 +191,36 @@ describe("DependencyDag", () => {
   it("announces dependencies to screen readers", () => {
     render(dag());
     expect(screen.getByTestId("dag-node-wallet")).toHaveTextContent("Depends on web-sdk and guardian");
+  });
+
+  it("hydrates release ages across a day boundary and updates them while open", async () => {
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date("2026-08-31T12:00:00Z"));
+    const element = <DependencyDag
+      components={[comp("vm", "chain", [], { matchedPublishedAt: "2026-08-31T11:00:00Z" })]}
+      rollups={[]}
+      targetVersion="0.16"
+      generatedAt="2026-08-31T12:00:00Z"
+    />;
+    const container = document.createElement("div");
+    container.innerHTML = renderToString(element);
+    expect(container).toHaveTextContent("today");
+    document.body.appendChild(container);
+    vi.setSystemTime(new Date("2026-09-02T10:59:30Z"));
+    const onRecoverableError = vi.fn();
+    let root: Root | undefined;
+    try {
+      await act(async () => {
+        root = hydrateRoot(container, element, { onRecoverableError });
+      });
+      expect(onRecoverableError).not.toHaveBeenCalled();
+      expect(container).toHaveTextContent("1d ago");
+      act(() => vi.advanceTimersByTime(30_000));
+      expect(container).toHaveTextContent("2d ago");
+    } finally {
+      await act(async () => root?.unmount());
+      container.remove();
+      vi.useRealTimers();
+    }
   });
 });

@@ -1,5 +1,5 @@
-import { render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("next/navigation", () => ({
   useRouter: () => ({ replace: vi.fn() }),
@@ -7,6 +7,7 @@ vi.mock("next/navigation", () => ({
 
 import type { DashboardSnapshot } from "@/lib/types";
 import { DashboardClient } from "./dashboard-client";
+import { SWRConfig } from "swr";
 
 const at = "2026-08-31T12:00:00.000Z";
 
@@ -72,9 +73,17 @@ const snapshot: DashboardSnapshot = {
   ],
 };
 
+const renderDashboard = () => render(
+  <SWRConfig value={{ provider: () => new Map(), errorRetryCount: 0, dedupingInterval: 0 }}>
+    <DashboardClient initial={snapshot} />
+  </SWRConfig>,
+);
+
 describe("DashboardClient", () => {
+  beforeEach(() => vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot })));
+  afterEach(() => vi.unstubAllGlobals());
   it("renders overview, DAG, and blockers from a full snapshot", () => {
-    render(<DashboardClient initial={snapshot} />);
+    renderDashboard();
     expect(screen.getByRole("heading", { name: "Miden Release Dashboard" })).toBeInTheDocument();
     expect(screen.getByText("Miden VM")).toBeInTheDocument();
     expect(screen.getByText("DevEx")).toBeInTheDocument();
@@ -83,17 +92,34 @@ describe("DashboardClient", () => {
   });
 
   it("surfaces the first blocked component in the Now-blocking callout", () => {
-    render(<DashboardClient initial={snapshot} />);
+    renderDashboard();
     const callout = screen.getByTestId("now-blocking");
     expect(callout).toHaveTextContent("Protocol — 1 open critical (mmagician)");
     expect(callout).toHaveTextContent("next decision 2026-09-03");
   });
 
   it("renders the release dropdown with the viewed release selected", () => {
-    render(<DashboardClient initial={snapshot} />);
+    renderDashboard();
     const select = screen.getByRole("combobox", { name: "Release" });
     expect(select).toHaveValue("0.16");
     const labels = [...select.querySelectorAll("option")].map((o) => o.textContent);
     expect(labels).toEqual(["v0.15", "v0.16 (current)", "v0.17"]);
   });
+
+  it("keeps the last snapshot on failure and lets the user retry a fresh deployment", async () => {
+    const newer = { ...snapshot, generatedAt: "2026-09-11T06:12:12.000Z" };
+    const fetch = vi.fn()
+      .mockResolvedValueOnce({ ok: false, status: 503 })
+      .mockResolvedValue({ ok: true, json: async () => newer });
+    vi.stubGlobal("fetch", fetch);
+    renderDashboard();
+    expect(await screen.findByText(/Couldn’t check for newer data/)).toBeInTheDocument();
+    expect(screen.getByText("Miden VM")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
+    await waitFor(() => expect(screen.queryByText(/Couldn’t check for newer data/)).not.toBeInTheDocument());
+    expect(screen.getByText("06:12:12 UTC")).toBeInTheDocument();
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls[1][1]).toEqual({ cache: "no-store" });
+  });
+
 });
