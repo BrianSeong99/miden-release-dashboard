@@ -44,6 +44,31 @@ evidence. Select it again to restore all connections. Lane labels remain visible
   now null. Node fee collection is tracked under 0.17 following the upstream 0.17.1 plan;
   multisig sponsorship and wallet recovery remain follow-ups with current applicability unconfirmed.
 
+## Release timing
+
+Component details show exact publication timestamps in UTC and elapsed age. The **Release timing**
+view separates the first stable release on the selected component train, its latest release on that
+train, and the latest publication across all versions. Publication chronology uses GitHub's
+`published_at`, not semantic-version order or the time this dashboard refreshed. Product tag filters
+still apply; Guardian, Wallet, VM and tools keep their independently configured version trains.
+
+**Dependency gaps** compare the first stable publications along each configured dependency edge.
+Positive gaps, open waits, and downstream releases that preceded upstream stable remain distinct.
+Open waits are measured at the snapshot's observation time. These calendar intervals establish a
+release-flow baseline; they do not prove dependency adoption, active engineering time, causality or
+individual performance. Patch releases cannot reset the first-stable baseline.
+
+The existing release selector lets you compare past/current/upcoming trains; **Export CSV** downloads
+the selected component or dependency table with UTC timestamps, signed numeric gaps and source URLs.
+GitHub history reconstructs these baselines on every refresh, without introducing a database or
+inventing historical observations. Available on-train history shows up to eight releases. History is
+fetched in pages of 100, up to three pages per repository. Missing pages, failed sources or invalid
+dates remain explicit; incomplete history cannot establish first or latest publication dates.
+
+Docs show the **latest verified deployment** containing their snapshot, which may be a redeployment.
+That date never stands in for first publication. Manifest-only components remain **Not tracked** for
+release timing: a current dependency pin alone cannot tell us when adoption happened.
+
 ## Docs and DevEx evidence
 
 - **Docs:** `docs-snapshot` checks that `versions.json` lists the target version and

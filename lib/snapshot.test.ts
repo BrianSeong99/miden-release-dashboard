@@ -120,6 +120,10 @@ describe("buildSnapshot", () => {
     const byId = new Map(snap.components.map((c) => [c.id, c]));
     // Curated follow-ups are visible work, not automatically release blockers.
     expect(byId.get("protocol")?.status).toBe("rc-released");
+    expect(byId.get("protocol")?.releaseTiming).toMatchObject({
+      source: "github-release", historyComplete: true, stableState: "unreleased", firstStable: null,
+      latestOnTrain: { tagName: "v0.16.0-rc.7", publishedAt: "2026-08-31T11:13:17Z" },
+    });
     expect(byId.get("wallet")?.status).not.toBe("blocked");
     // Node: rc release + on-train exact pin.
     expect(byId.get("node")?.status).toBe("rc-released");
@@ -253,6 +257,10 @@ describe("buildSnapshot", () => {
     expect(snap.release.targetVersion).toBe("0.15");
     expect(snap.blockers).toHaveLength(0);
     expect(snap.components.find((c) => c.id === "docs")?.status).toBe("docs-published");
+    expect(snap.components.find((c) => c.id === "docs")?.releaseTiming).toMatchObject({
+      source: "docs-deployment", firstStable: null, stableState: "not-monitored",
+      latest: { publishedAt: "2026-09-09T12:00:00Z" },
+    });
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
     // Recorded payloads: testnet runs 0.15.0 (current for this view), devnet
     // runs 0.16.0-rc.3 (a newer train -> ahead, not "behind").
@@ -269,6 +277,7 @@ describe("buildSnapshot", () => {
     for (const c of snap.components) {
       if (c.manual) continue;
       expect(c.status).toBe("unknown");
+      expect(c.releaseTiming?.firstStable).toBeNull();
     }
     expect(snap.environments.every((e) => e.status === "unknown")).toBe(true);
     expect(snap.blockers.every((b) => b.live.state === "unknown")).toBe(true);
@@ -277,6 +286,55 @@ describe("buildSnapshot", () => {
       category: "migration", title: "Project template #64", owner: null, nextDecisionDate: null,
     });
     expect(snap.readiness.criticalBlockerCount).toBe(0);
+  });
+
+  it("fetches a shared repository's release history once per build and derives each product separately", async () => {
+    const config = configuration.loadConfig();
+    const debuggerConfig = config.release.releases.find((r) => r.targetVersion === "0.16")!.components.find((c) => c.id === "debugger")!;
+    // Synthetic shared publisher: today's compiler/debugger repos are separate.
+    debuggerConfig.repo = "0xMiden/compiler";
+    debuggerConfig.detectors = [{ type: "github-release", tagPrefixes: ["miden-debug-v"] }];
+    vi.spyOn(configuration, "loadConfig").mockReturnValue(config);
+    const fetch = vi.fn(async (url: string) => {
+      if (new URL(url).pathname === "/repos/0xMiden/compiler/releases") {
+        return new Response(JSON.stringify([
+          { tag_name: "v0.10.1", prerelease: false, draft: false, published_at: "2026-09-02T12:00:00Z", html_url: "https://github.com/0xMiden/compiler/releases/tag/v0.10.1" },
+          { tag_name: "miden-debug-v0.10.3", prerelease: false, draft: false, published_at: "2026-09-01T12:00:00Z", html_url: "https://github.com/0xMiden/compiler/releases/tag/miden-debug-v0.10.3" },
+        ]));
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const snap = await buildSnapshot("0.16");
+    expect(fetch.mock.calls.filter(([url]) => new URL(url).pathname === "/repos/0xMiden/compiler/releases")).toHaveLength(1);
+    expect(snap.components.find((c) => c.id === "compiler")?.releaseTiming?.firstStable?.tagName).toBe("v0.10.1");
+    expect(snap.components.find((c) => c.id === "debugger")?.releaseTiming?.firstStable?.tagName).toBe("miden-debug-v0.10.3");
+    await buildSnapshot("0.16");
+    expect(fetch.mock.calls.filter(([url]) => new URL(url).pathname === "/repos/0xMiden/compiler/releases")).toHaveLength(2);
+  });
+
+  it.each([
+    { tag: "v0.28.0", status: "unknown", matched: null },
+    { tag: "v0.29.0", status: "stable-released", matched: "0.29.0" },
+  ])("keeps $tag partial release evidence from proving missing or global latest releases", async ({ tag, status: expectedStatus, matched }) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const u = new URL(url);
+      if (u.pathname === "/repos/0xMiden/miden-vm/releases") {
+        if (u.searchParams.has("page")) return new Response("{}", { status: 503 });
+        return new Response(JSON.stringify([{
+          tag_name: tag, prerelease: false, draft: false, published_at: "2026-09-01T12:00:00Z",
+          html_url: `https://github.com/0xMiden/miden-vm/releases/tag/${tag}`,
+        }]), { headers: { link: '<https://api.github.com/repos/0xMiden/miden-vm/releases?per_page=100&page=2>; rel="next"' } });
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    expect(snap.components.find((c) => c.id === "vm")).toMatchObject({
+      status: expectedStatus, matchedRelease: matched, latestStable: null, latestRc: null,
+      releaseTiming: { historyComplete: false, latest: null, latestOnTrain: null, firstStable: null, error: expect.stringContaining("503") },
+    });
   });
 
   it("uses live GitHub titles and assignees, including an explicitly unassigned issue", async () => {

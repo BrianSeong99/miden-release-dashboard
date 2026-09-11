@@ -1,5 +1,6 @@
 import { err, ok, safeFetch, truncate } from "./fetch-utils";
-import type { GhRelease, IssueLiveState, Result } from "./types";
+import type { GhRelease, IssueLiveState, ReleaseHistory, Result } from "./types";
+import { z } from "zod";
 
 // Server-side GitHub REST adapter. GITHUB_TOKEN is read here and nowhere else;
 // it never reaches the browser (only derived public data ends up in the
@@ -36,32 +37,62 @@ async function ghError(res: globalThis.Response, what: string): Promise<string> 
   return truncate(`GitHub ${res.status} for ${what}${detail}`);
 }
 
-export async function listReleases(repo: string): Promise<Result<GhRelease[]>> {
-  const url = `${API}/repos/${repo}/releases?per_page=30`;
-  const res = await safeFetch(url, { headers: headers("application/vnd.github+json") });
-  if (!res.ok) return err(res.error);
-  if (!res.value.ok) return err(await ghError(res.value, `${repo} releases`));
-  try {
-    const body = (await res.value.json()) as Array<{
-      tag_name: string;
-      prerelease: boolean;
-      draft: boolean;
-      published_at: string | null;
-      html_url: string;
-    }>;
-    return ok(
-      body
-        .filter((r) => !r.draft)
-        .map((r) => ({
-          tagName: r.tag_name,
-          prerelease: r.prerelease,
-          publishedAt: r.published_at,
-          htmlUrl: r.html_url,
-        })),
-    );
-  } catch (e) {
-    return err(`unreadable releases payload for ${repo}: ${e instanceof Error ? e.message : e}`);
+const releasePageSchema = z.array(z.object({
+  tag_name: z.string(),
+  prerelease: z.boolean(),
+  draft: z.boolean(),
+  published_at: z.string().nullable(),
+  html_url: z.string(),
+}));
+
+/** Bounded release history. Incomplete history must never prove a debut date. */
+export async function listReleaseHistory(repo: string): Promise<Result<ReleaseHistory>> {
+  const releases: GhRelease[] = [];
+  const visited = new Set<string>();
+  let url = `${API}/repos/${repo}/releases?per_page=100`;
+  const incomplete = (error: string) => ok({ releases, complete: false, error: truncate(error) });
+  for (let page = 0; page < 3; page++) {
+    visited.add(url);
+    const res = await safeFetch(url, { headers: headers("application/vnd.github+json") });
+    if (!res.ok) return page === 0 ? err(res.error) : incomplete(res.error);
+    if (!res.value.ok) {
+      const error = await ghError(res.value, `${repo} releases`);
+      return page === 0 ? err(error) : incomplete(error);
+    }
+    try {
+      const body = releasePageSchema.parse(await res.value.json());
+      releases.push(...body.filter((r) => !r.draft).map((r) => ({
+        tagName: r.tag_name, prerelease: r.prerelease, publishedAt: r.published_at, htmlUrl: r.html_url,
+      })));
+    } catch {
+      const message = `unreadable releases payload for ${repo}`;
+      return page === 0 ? err(message) : incomplete(message);
+    }
+    const links = res.value.headers.get("link") ?? "";
+    const next = [...links.matchAll(/<([^>]+)>\s*;\s*rel="([^"]+)"/g)]
+      .find((match) => match[2].split(/\s+/).includes("next"))?.[1];
+    if (!next) return ok({ releases, complete: true });
+    try {
+      const candidate = new URL(next);
+      candidate.searchParams.set("per_page", "100");
+      // GitHub can canonicalize a named-repo endpoint to its numeric repo ID.
+      const allowedPath = candidate.pathname.toLowerCase() === `/repos/${repo}/releases`.toLowerCase()
+        || /^\/repositories\/\d+\/releases$/.test(candidate.pathname);
+      if (candidate.origin !== API || candidate.username || candidate.password || !allowedPath || visited.has(candidate.href)) {
+        return incomplete(`Invalid release pagination link for ${repo}`);
+      }
+      url = candidate.href;
+    } catch {
+      return incomplete(`Invalid release pagination link for ${repo}`);
+    }
   }
+  return incomplete(`Release history page limit reached for ${repo}`);
+}
+
+/** Compatibility view for callers that need release evidence without timing. */
+export async function listReleases(repo: string): Promise<Result<GhRelease[]>> {
+  const history = await listReleaseHistory(repo);
+  return history.ok ? { ...history, value: history.value.releases } : history;
 }
 
 /** Raw file contents at a ref (the component's monitored branch). */

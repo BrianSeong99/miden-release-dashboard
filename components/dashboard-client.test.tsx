@@ -87,11 +87,12 @@ describe("DashboardClient", () => {
   it("renders overview, DAG, and blockers from a full snapshot", () => {
     renderDashboard();
     expect(screen.getByRole("heading", { name: "Miden Release Dashboard" })).toBeInTheDocument();
-    expect(screen.getByText("Miden VM")).toBeInTheDocument();
+    expect(screen.getAllByText("Miden VM").length).toBeGreaterThan(0);
     expect(screen.getByText("DevEx")).toBeInTheDocument();
     expect(screen.getByText("0.16.0-rc.3")).toBeInTheDocument(); // devnet chip
     expect(screen.getByText(/1 confirmed critical · 1 open · 1 closed\/merged/)).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Developer experience" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Release timing" })).toBeInTheDocument();
     expect(screen.getByTestId("component-docs")).toBeInTheDocument();
   });
 
@@ -118,7 +119,7 @@ describe("DashboardClient", () => {
     vi.stubGlobal("fetch", fetch);
     renderDashboard();
     expect(await screen.findByText(/Couldn’t check for newer data/)).toBeInTheDocument();
-    expect(screen.getByText("Miden VM")).toBeInTheDocument();
+    expect(screen.getAllByText("Miden VM").length).toBeGreaterThan(0);
     fireEvent.click(screen.getByRole("button", { name: "Check for updates" }));
     await waitFor(() => expect(screen.queryByText(/Couldn’t check for newer data/)).not.toBeInTheDocument());
     expect(screen.getByText("06:12:12 UTC")).toBeInTheDocument();

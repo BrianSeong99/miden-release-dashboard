@@ -268,7 +268,7 @@ export function DependencyDag({
             defaultOpen
           />
         ) : selectedComponent ? (
-          <ComponentNode component={selectedComponent} />
+          <ComponentNode component={selectedComponent} now={now} />
         ) : null}
       </div>
     </section>

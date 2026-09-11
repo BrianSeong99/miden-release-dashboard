@@ -1,7 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { getIssueState, getRawFile, getSubmodulePointer, listReleases } from "./github";
+import { getIssueState, getRawFile, getSubmodulePointer, listReleaseHistory, listReleases } from "./github";
 
 const fixture = (name: string) =>
   fs.readFileSync(path.join(__dirname, "../test/fixtures", name), "utf8");
@@ -52,6 +52,79 @@ describe("listReleases", () => {
     expect((lastRequest?.init?.headers as Record<string, string>).Authorization).toBe(
       "Bearer test-token",
     );
+  });
+});
+
+describe("listReleaseHistory", () => {
+  const release = (tag: string) => ({
+    tag_name: tag, prerelease: false, draft: false, published_at: "2026-09-01T12:00:00Z",
+    html_url: `https://github.com/x/y/releases/tag/${tag}`,
+  });
+
+  it("follows GitHub next links with 100 releases per page and preserves distinct raw tags", async () => {
+    const fetch = vi.fn(async (url: string) => new URL(url).searchParams.get("page") === "2"
+      ? new Response(JSON.stringify([release("v0.16.0")]))
+      : new Response(JSON.stringify([release("V0.16.0")]), {
+          headers: { link: '<https://api.github.com/repositories/123/releases?per_page=100&page=2>; rel="next", <https://api.github.com/repositories/123/releases?per_page=100&page=2>; rel="last"' },
+        }));
+    vi.stubGlobal("fetch", fetch);
+    const result = await listReleaseHistory("x/y");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.complete).toBe(true);
+    expect(result.value.releases.map((r) => r.tagName)).toEqual(["V0.16.0", "v0.16.0"]);
+    expect(fetch.mock.calls.map(([url]) => new URL(url).searchParams.get("per_page"))).toEqual(["100", "100"]);
+  });
+
+  it("marks capped history incomplete instead of claiming the first release was found", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      const page = Number(new URL(url).searchParams.get("page") ?? 1);
+      return new Response(JSON.stringify([release(`v0.16.${page}`)]), {
+        headers: { link: `<https://api.github.com/repos/x/y/releases?per_page=100&page=${page + 1}>; rel="next"` },
+      });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const result = await listReleaseHistory("x/y");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({ complete: false, error: expect.stringContaining("limit") });
+    expect(result.value.releases).toHaveLength(3);
+    expect(fetch).toHaveBeenCalledTimes(3);
+  });
+
+  it("keeps already-fetched history when a later page fails", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => new URL(url).searchParams.has("page")
+      ? new Response(JSON.stringify({ message: "Unavailable" }), { status: 503 })
+      : new Response(JSON.stringify([release("v0.16.1")]), {
+          headers: { link: '<https://api.github.com/repos/x/y/releases?per_page=100&page=2>; rel="next"' },
+        })));
+    const result = await listReleaseHistory("x/y");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value).toMatchObject({ complete: false, error: expect.stringContaining("503") });
+    expect(result.value.releases.map((r) => r.tagName)).toEqual(["v0.16.1"]);
+  });
+
+  it("does not follow pagination links to another origin", async () => {
+    process.env.GITHUB_TOKEN = "test-token";
+    const fetch = vi.fn(async () => new Response(JSON.stringify([release("v0.16.0")]), {
+      headers: { link: '<https://untrusted.example/releases?page=2>; rel="next"' },
+    }));
+    vi.stubGlobal("fetch", fetch);
+    const result = await listReleaseHistory("x/y");
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.value.complete).toBe(false);
+    expect(result.value.error).toContain("pagination");
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it("returns a failure when the first page is unreadable", async () => {
+    mockFetch('{"message":"not a releases list"}');
+    const result = await listReleaseHistory("x/y");
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.error).toContain("unreadable releases");
   });
 });
 
