@@ -70,7 +70,11 @@ export function layoutDependencies(items: LayoutItem[]) {
 export function dependencyWaypoints(from: PositionedDependency, to: PositionedDependency, index: number) {
   const start = { x: from.x + NODE_W, y: from.y + NODE_H / 2 };
   const end = { x: to.x, y: to.y + NODE_H / 2 };
-  if (from.lane === to.lane && to.column === from.column + 1) return [start, end];
+  if (to.column === from.column + 1) {
+    if (from.lane === to.lane) return [start, end];
+    const middleX = (start.x + end.x) / 2;
+    return [start, { x: middleX, y: start.y }, { x: middleX, y: end.y }, end];
+  }
   const exitX = start.x + 12 + (index % 3) * 6;
   const entryX = end.x - 12 - (index % 3) * 6;
   const gutterY = to.y - 18 - (index % 3) * 3;
@@ -78,17 +82,11 @@ export function dependencyWaypoints(from: PositionedDependency, to: PositionedDe
     { x: entryX, y: gutterY }, { x: entryX, y: end.y }, end];
 }
 
-/** Smooth adjacent connections within their column gap. Longer routes keep
- * their clear gutters, with tangent curves replacing each right-angle bend. */
+/** Keep routes horizontal and vertical, rounding each right-angle bend. */
 export function dependencyPath(from: PositionedDependency, to: PositionedDependency, index: number) {
   const points = dependencyWaypoints(from, to, index);
   const start = points[0];
   const end = points[points.length - 1];
-  if (to.column === from.column + 1) {
-    const middleX = (start.x + end.x) / 2;
-    return `M ${start.x} ${start.y} C ${middleX} ${start.y} ${middleX} ${end.y} ${end.x} ${end.y}`;
-  }
-
   const commands = [`M ${start.x} ${start.y}`];
   for (let i = 1; i < points.length - 1; i++) {
     const previous = points[i - 1], corner = points[i], next = points[i + 1];
