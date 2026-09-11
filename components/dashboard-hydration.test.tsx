@@ -29,7 +29,7 @@ const initial: DashboardSnapshot = {
   blockers: [],
 };
 
-it("hydrates a 288-minute-old dashboard and clears its stale warning after fetching fresh data", async () => {
+it("hydrates a 288-minute-old dashboard with header freshness status and updates it after fetching fresh data", async () => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(new Date(builtAt));
   const fresh: DashboardSnapshot = {
@@ -59,14 +59,17 @@ it("hydrates a 288-minute-old dashboard and clears its stale warning after fetch
     });
     expect(onRecoverableError).not.toHaveBeenCalled();
     expect(within(container).getByRole("heading", { name: "Miden Release Dashboard" })).toBe(originalHeading);
-    expect(within(container).getByRole("alert")).toHaveTextContent("288 minutes");
+    const freshness = within(container).getByRole("status");
+    expect(freshness.closest("header")).not.toBeNull();
+    expect(freshness).toHaveTextContent("Refresh delayed · 288m old");
+    expect(within(container).queryByRole("alert")).not.toBeInTheDocument();
     expect(container.querySelector("time")).toHaveTextContent("12:00:00 UTC");
 
     await waitFor(() => expect(fetch).toHaveBeenCalledOnce());
     await act(async () => {
       resolveFetch(new Response(JSON.stringify(fresh), { status: 200 }));
     });
-    await waitFor(() => expect(within(container).queryByRole("alert")).not.toBeInTheDocument());
+    await waitFor(() => expect(within(container).getByRole("status")).toHaveTextContent("Scheduled every 15 minutes"));
     expect(container.querySelector("time")).toHaveAttribute("datetime", openedAt);
     expect(container.querySelector("time")).toHaveTextContent("16:48:00 UTC");
     expect(within(container).getByTestId("dag-node-vm")).toHaveTextContent("0.29.5");

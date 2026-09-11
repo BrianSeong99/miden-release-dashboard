@@ -8,7 +8,7 @@ import { BlockerList } from "./blocker-list";
 import { DependencyDag } from "./dependency-dag";
 import { ManualBadge } from "./manual-badge";
 import { ReleaseOverview } from "./release-overview";
-import { StaleBanner } from "./stale-banner";
+import { RefreshStatus } from "./refresh-status";
 import { fetchSnapshot, SNAPSHOT_REFRESH_INTERVAL } from "@/lib/snapshot-fetcher";
 
 function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
@@ -112,7 +112,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
                 {generated.toISOString().slice(11, 19)} UTC
               </time>
             </div>
-            <div>Scheduled every 15 minutes</div>
+            <RefreshStatus generatedAt={snapshot.generatedAt} />
           </div>
           <button
             type="button"
@@ -130,7 +130,6 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
           Couldn’t check for newer data. Showing the last available snapshot. Use “Check for updates” to retry.
         </p>
       )}
-      <StaleBanner generatedAt={snapshot.generatedAt} />
 
       <ReleaseOverview snapshot={snapshot} />
 
