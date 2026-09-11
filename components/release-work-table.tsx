@@ -18,6 +18,27 @@ const views: { value: View; label: string }[] = [
   { value: "components", label: "Components" },
 ];
 const kindLabels = { component: "Component", blocker: "Blocker", "follow-up": "Follow-up", migration: "Migration" } as const;
+// Component identity colors stay fixed across releases, filters, and work states.
+const componentColors: Record<string, string> = {
+  vm: "bg-slate-100 text-slate-700",
+  debugger: "bg-purple-100 text-purple-700",
+  compiler: "bg-indigo-100 text-indigo-700",
+  protocol: "bg-orange-100 text-orange-700",
+  node: "bg-amber-100 text-amber-700",
+  "rust-sdk": "bg-rose-100 text-rose-700",
+  "web-sdk": "bg-sky-100 text-sky-700",
+  guardian: "bg-emerald-100 text-emerald-700",
+  wallet: "bg-teal-100 text-teal-700",
+  docs: "bg-blue-100 text-blue-700",
+  tutorials: "bg-yellow-100 text-yellow-700",
+  "frontend-template": "bg-cyan-100 text-cyan-700",
+  "project-template": "bg-violet-100 text-violet-700",
+  "agent-tools": "bg-lime-100 text-lime-700",
+  "agentic-template": "bg-fuchsia-100 text-fuchsia-700",
+  midenup: "bg-stone-100 text-stone-700",
+  playground: "bg-pink-100 text-pink-700",
+  "source-verification": "bg-green-100 text-green-800",
+};
 const controlClass = "min-h-10 rounded-full bg-muted px-4 py-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 const linkClass = "rounded-sm font-medium hover:text-brand hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
 
@@ -123,7 +144,7 @@ export function ReleaseWorkTable({ components, work, generatedAt }: {
                 </div>
               </div></td>
               <td className="px-4 py-4 text-muted-foreground">{row.groupLabel}</td>
-              <td className="px-4 py-4">{row.componentLabel}</td>
+              <td className="px-4 py-4"><span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap", componentColors[row.componentId] ?? "bg-zinc-100 text-zinc-700")}>{row.componentLabel}</span></td>
               <td className="px-4 py-4"><StatusBadge tone={row.tone} label={row.status} title={row.work?.live.state === "unknown" ? row.work.live.error : row.kind === "component" ? c?.reason : undefined} /></td>
               <td className="max-w-[150px] break-words px-4 py-4"><div>{row.owner ?? (row.status === "Unknown" ? "Unknown" : "Unassigned")}</div><div className="mt-1 text-xs text-muted-foreground">{row.ownerLabel}</div></td>
               <td className="px-4 py-4 text-xs"><span className="font-mono">{c?.matchedRelease ?? c?.expectedVersion ?? "—"}</span>{c && <div className="mt-1 text-muted-foreground">{c.matchedRelease ? row.work ? "Component release" : "Released" : c.expectedVersion ? "Target" : ""}</div>}</td>
