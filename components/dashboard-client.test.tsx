@@ -90,7 +90,8 @@ describe("DashboardClient", () => {
     expect(screen.getAllByText("Miden VM").length).toBeGreaterThan(0);
     expect(screen.getAllByText("DevEx").length).toBeGreaterThan(0);
     expect(screen.getByText("0.16.0-rc.3")).toBeInTheDocument(); // devnet chip
-    expect(screen.getByText("5 of 5 items")).toBeInTheDocument();
+    expect(screen.getByText("4 of 4 items")).toBeInTheDocument();
+    expect(screen.queryByTestId("work-row-work-b2")).not.toBeInTheDocument();
     expect(screen.queryByRole("heading", { name: "Developer experience" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Release timing" })).toBeInTheDocument();
     expect(screen.getByTestId("work-row-component-docs")).toBeInTheDocument();
