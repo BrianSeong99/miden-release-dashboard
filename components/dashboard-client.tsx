@@ -9,9 +9,7 @@ import { DependencyDag } from "./dependency-dag";
 import { ManualBadge } from "./manual-badge";
 import { ReleaseOverview } from "./release-overview";
 import { StaleBanner } from "./stale-banner";
-
-// Relative path so it resolves under the GitHub Pages basePath and locally.
-const fetcher = (url: string) => fetch(url).then((r) => r.json() as Promise<DashboardSnapshot>);
+import { fetchSnapshot, SNAPSHOT_REFRESH_INTERVAL } from "@/lib/snapshot-fetcher";
 
 function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
   const open = blockers.filter((b) => b.live.state === "open" || b.live.state === "unknown");
@@ -62,10 +60,10 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
   // The baked snapshot renders immediately; SWR then refreshes from the
   // per-release JSON the Pages workflow regenerates on a cron. Switching
   // releases fetches that release's file on demand.
-  const { data, isLoading } = useSWR(`data/${version}.json`, fetcher, {
+  const { data, error, isValidating, mutate } = useSWR(`data/${version}.json`, fetchSnapshot, {
     fallbackData: version === initial.release.targetVersion ? initial : undefined,
     keepPreviousData: true,
-    refreshInterval: 5 * 60_000,
+    refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
   });
   const snapshot = data ?? initial;
   const switchRelease = (v: string) => {
@@ -91,7 +89,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
             </p>
           </div>
         </div>
-        <div className="flex items-center gap-4">
+        <div className="flex flex-wrap items-center gap-4">
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Release
             <select
@@ -110,22 +108,34 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
           <div className="text-right text-xs text-muted-foreground">
             <div>
               Last refresh{" "}
-              <time dateTime={snapshot.generatedAt} suppressHydrationWarning>
-                {generated.toLocaleTimeString()}
+              <time dateTime={snapshot.generatedAt}>
+                {generated.toISOString().slice(11, 19)} UTC
               </time>
-              {isLoading && " …"}
             </div>
-            <div>rebuilt every 15 minutes</div>
+            <div>Scheduled every 15 minutes</div>
           </div>
+          <button
+            type="button"
+            disabled={isValidating}
+            onClick={() => { void mutate().catch(() => undefined); }}
+            className="cursor-pointer rounded-lg border bg-card px-2.5 py-1.5 text-xs font-medium hover:border-brand/60 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+          >
+            {isValidating ? "Checking…" : "Check for updates"}
+          </button>
         </div>
       </header>
 
+      {error && (
+        <p role="alert" className="rounded-lg border border-tone-amber/40 bg-tone-amber-bg px-4 py-2.5 text-sm text-tone-amber">
+          Couldn’t check for newer data. Showing the last available snapshot. Use “Check for updates” to retry.
+        </p>
+      )}
       <StaleBanner generatedAt={snapshot.generatedAt} />
 
       <ReleaseOverview snapshot={snapshot} />
 
       <Section title="Dependency map">
-        <DependencyDag components={snapshot.components} rollups={snapshot.rollups} targetVersion={snapshot.release.targetVersion} />
+        <DependencyDag components={snapshot.components} rollups={snapshot.rollups} targetVersion={snapshot.release.targetVersion} generatedAt={snapshot.generatedAt} />
       </Section>
 
       <Section

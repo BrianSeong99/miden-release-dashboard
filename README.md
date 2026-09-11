@@ -18,8 +18,9 @@ evidence. Select it again to restore all connections. Lane labels remain visible
 - **Automated:** GitHub releases + dependency manifests per component (`config/release.yaml`
   defines the repo, monitored branch and detectors), the network monitor JSON at
   `status.{devnet,testnet}.miden.io/status`, and live state for each configured blocker.
-  GitHub Pages serves generated per-release JSON, refreshed by the deployment workflow
-  every 15 minutes; the browser checks those files every minute. A failed source degrades
+  GitHub Pages serves generated per-release JSON. Deployment is scheduled every 15 minutes;
+  GitHub can delay or drop scheduled runs. The browser checks those files every minute,
+  bypassing cached snapshots; **Check for updates** retries immediately. A failed source degrades
   the affected evidence to **Unknown** — never a guess.
 - **Manual:** `config/blockers.yaml` (and any `manual-override`
   detector). Manual data always renders a **Manual** badge. Edit via PR; the build fails on a
@@ -79,6 +80,9 @@ npm run lint && npx tsc --noEmit && npm run test:coverage && npm run build
 ## Deploy
 
 GitHub Pages, fully static: `.github/workflows/pages.yml` regenerates the per-release snapshot
-JSON (`scripts/export-snapshots.ts`) and rebuilds the exported site every 15 minutes on a cron
-(plus every push to `main`). The workflow's built-in `GITHUB_TOKEN` covers the API budget; no
+JSON (`scripts/export-snapshots.ts`) and rebuilds the exported site on a schedule at minutes
+7, 22, 37 and 52 (plus every push to `main`). Scheduling avoids peak quarter-hour boundaries,
+but GitHub Actions does not guarantee those times. The stale banner continues to show actual
+snapshot age after 30 minutes; checking for updates cannot trigger a server rebuild. Maintainers
+can run the Pages workflow manually if a scheduled event is delayed. The workflow's built-in `GITHUB_TOKEN` covers the API budget; no
 secrets to configure. Live at https://brianseong99.github.io/miden-release-dashboard/.
