@@ -129,16 +129,24 @@ describe("DependencyDag", () => {
       expect(a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h <= b.y || b.y + b.h <= a.y).toBe(true);
     }
     for (const edge of container.querySelectorAll<SVGPathElement>("path[data-from]")) {
-      const points = Array.from(edge.getAttribute("d")!.matchAll(/[ML] ([\d.]+) ([\d.]+)/g),
-        (match) => ({ x: Number(match[1]), y: Number(match[2]) }));
-      for (let i = 1; i < points.length; i++) {
-        const a = points[i - 1], b = points[i];
-        for (const card of cards) {
-          const intersects = a.x === b.x
-            ? a.x > card.x && a.x < card.x + card.w && Math.max(a.y, b.y) > card.y && Math.min(a.y, b.y) < card.y + card.h
-            : a.y > card.y && a.y < card.y + card.h && Math.max(a.x, b.x) > card.x && Math.min(a.x, b.x) < card.x + card.w;
-          expect(intersects, `${edge.dataset.from} → ${edge.dataset.to} crosses ${card.id}`).toBe(false);
+      const path = edge.getAttribute("d")!;
+      expect(path).toMatch(/[CQ]/);
+      let previous = { x: 0, y: 0 };
+      for (const [, command, coordinates] of path.matchAll(/([MLQC]) ([^MLQC]+)/g)) {
+        const values = coordinates.trim().split(/\s+/).map(Number);
+        expect(values.every(Number.isFinite)).toBe(true);
+        const points = Array.from({ length: values.length / 2 }, (_, i) => ({ x: values[2 * i], y: values[2 * i + 1] }));
+        if (command !== "M") {
+          // A Bezier stays inside the convex hull of its endpoints and controls.
+          // Keeping the entire bounding box clear is a conservative collision check.
+          const bounds = [previous, ...points];
+          for (const card of cards) {
+            const intersects = Math.max(...bounds.map((p) => p.x)) > card.x && Math.min(...bounds.map((p) => p.x)) < card.x + card.w
+              && Math.max(...bounds.map((p) => p.y)) > card.y && Math.min(...bounds.map((p) => p.y)) < card.y + card.h;
+            expect(intersects, `${edge.dataset.from} → ${edge.dataset.to} crosses ${card.id}`).toBe(false);
+          }
         }
+        previous = points[points.length - 1];
       }
     }
   });
