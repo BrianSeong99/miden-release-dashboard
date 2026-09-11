@@ -15,6 +15,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-ring: var(--ring);
   --color-brand: var(--brand);
+  --color-accent: var(--accent);
 
   /* Four traffic-light tones; each maps to exactly one meaning on this
      dashboard (PRD section 5B). Values follow guardian-dashboard's AA-checked
@@ -35,21 +36,21 @@
 }
 
 :root {
-  /* Miden light palette, following guardian-dashboard: the page is the
-     lightest ground and surfaces sit INTO it. Raw #ff5500 stays in the logo
-     mark; #bc3400 is the accessible accent (4.99:1 on a card). */
-  --background: #f7f6f4;
-  --foreground: #1a1d21;
+  /* Soft neutral surfaces; coral is decorative, darker orange carries text
+     and focus states. Semantic status tones keep their existing meaning. */
+  --background: #eaeaea;
+  --foreground: #171717;
   --card: #ffffff;
-  --card-foreground: #1a1d21;
-  --muted: #efeeec;
-  --muted-foreground: #656565;
-  --border: #dcd9d4;
-  --primary: #bc3400;
+  --card-foreground: #171717;
+  --muted: #f7f7f7;
+  --muted-foreground: #686868;
+  --border: #e8e8e8;
+  --primary: #171717;
   --primary-foreground: #ffffff;
   --ring: #bc3400;
   --brand: #bc3400;
-  --radius: 0.625rem;
+  --accent: #ec704f;
+  --radius: 1.5rem;
 
   --tone-green: #00753b;
   --tone-amber: #9a5b00;
@@ -70,5 +71,14 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans), ui-sans-serif, system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  ::selection {
+    background: #fbd9ce;
+    color: #171717;
+  }
+  :focus-visible {
+    outline: 2px solid var(--brand);
+    outline-offset: 3px;
   }
 }

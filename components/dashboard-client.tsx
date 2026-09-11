@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
+import { RefreshCw } from "lucide-react";
 import type { BlockerView, DashboardSnapshot } from "@/lib/types";
 import { BlockerList } from "./blocker-list";
 import { DependencyDag } from "./dependency-dag";
@@ -16,7 +17,7 @@ function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
   const critical = open.filter((b) => b.severity === "critical").length;
   const resolved = blockers.length - open.length;
   return (
-    <span className="rounded-full bg-muted px-2.5 py-0.5 text-xs text-muted-foreground">
+    <span className="rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">
       {critical} critical · {open.length - critical} other open · {resolved} resolved
     </span>
   );
@@ -32,9 +33,9 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center gap-2">
-        <h2 className="text-lg font-semibold">{title}</h2>
+    <section className="flex min-w-0 flex-col gap-5">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <h2 className="text-xl font-semibold tracking-tight sm:text-2xl">{title}</h2>
         {aside}
       </div>
       {children}
@@ -74,28 +75,27 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
   const today = snapshot.generatedAt.slice(0, 10);
 
   return (
-    <main className="mx-auto flex max-w-[1600px] flex-col gap-8 px-4 py-6 md:px-8">
-      <header className="flex flex-wrap items-center justify-between gap-3">
+    <main className="mx-auto my-3 flex w-[calc(100%_-_24px)] max-w-[1664px] flex-col overflow-hidden rounded-[28px] bg-card sm:my-6 sm:w-[calc(100%_-_48px)] sm:rounded-[40px]">
+      <header className="flex flex-wrap items-center justify-between gap-x-8 gap-y-6 bg-muted px-5 py-7 sm:px-8 lg:px-10 lg:py-9">
         <div className="flex items-center gap-3">
-          {/* Miden mark — the one place the raw brand orange lives. */}
-          <svg aria-hidden viewBox="0 0 24 24" className="size-7 shrink-0">
-            <rect width="24" height="24" rx="5" fill="#ff5500" />
+          <svg aria-hidden viewBox="0 0 24 24" className="size-11 shrink-0">
+            <rect width="24" height="24" rx="12" fill="#171717" />
             <path d="M6 17V7h2.4l3.6 5.2L15.6 7H18v10h-2.3v-6.2L12 15.4 8.3 10.8V17H6z" fill="#fff" />
           </svg>
           <div>
-            <h1 className="text-xl font-semibold">Miden Release Dashboard</h1>
-            <p className="text-xs text-muted-foreground">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Miden Release Dashboard</h1>
+            <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               Where is {snapshot.release.name} across the dependency chain?
             </p>
           </div>
         </div>
-        <div className="flex flex-wrap items-center gap-4">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-4">
           <label className="flex items-center gap-2 text-xs text-muted-foreground">
             Release
             <select
               value={version}
               onChange={(e) => switchRelease(e.target.value)}
-              className="cursor-pointer rounded-lg border bg-card px-2.5 py-1.5 text-sm font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+              className="min-h-10 cursor-pointer rounded-full border bg-card px-4 py-2.5 text-sm font-medium text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
             >
               {snapshot.releases.map((r) => (
                 <option key={r.targetVersion} value={r.targetVersion}>
@@ -105,7 +105,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
               ))}
             </select>
           </label>
-          <div className="text-right text-xs text-muted-foreground">
+          <div className="text-xs leading-relaxed text-muted-foreground sm:text-right">
             <div>
               Last refresh{" "}
               <time dateTime={snapshot.generatedAt}>
@@ -118,13 +118,15 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
             type="button"
             disabled={isValidating}
             onClick={() => { void mutate().catch(() => undefined); }}
-            className="cursor-pointer rounded-lg border bg-card px-2.5 py-1.5 text-xs font-medium hover:border-brand/60 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
+            className="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full bg-primary px-5 py-2.5 text-xs font-medium text-primary-foreground transition-colors hover:bg-primary/85 disabled:cursor-wait disabled:opacity-60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
           >
+            <RefreshCw aria-hidden className="size-3.5" />
             {isValidating ? "Checking…" : "Check for updates"}
           </button>
         </div>
       </header>
 
+      <div className="flex min-w-0 flex-col gap-10 px-5 py-7 sm:px-8 sm:py-8 lg:gap-12 lg:px-10">
       {error && (
         <p role="alert" className="rounded-lg border border-tone-amber/40 bg-tone-amber-bg px-4 py-2.5 text-sm text-tone-amber">
           Couldn’t check for newer data. Showing the last available snapshot. Use “Check for updates” to retry.
@@ -140,7 +142,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       <Section
         title="Release blockers"
         aside={
-          <span className="flex items-center gap-2">
+          <span className="flex flex-wrap items-center gap-2">
             <BlockerCounts blockers={snapshot.blockers} />
             <ManualBadge note="Curated in config/blockers.yaml — the State column is live from GitHub" />
           </span>
@@ -150,10 +152,11 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       </Section>
 
 
-      <footer className="border-t pt-4 text-xs text-muted-foreground">
+      <footer className="border-t pt-5 text-xs leading-relaxed text-muted-foreground">
         Internal — automated data from GitHub and status.*.miden.io; manual data is badged.
         Edit <span className="font-mono">config/*.yaml</span> to update the monitored components and blockers.
       </footer>
+      </div>
     </main>
   );
 }

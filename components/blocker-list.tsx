@@ -32,17 +32,17 @@ export function BlockerList({ blockers, today }: { blockers: BlockerView[]; toda
   );
   const firstResolved = sorted.findIndex((b) => !isOpen(b));
   return (
-    <div className="overflow-x-auto rounded-xl border bg-card">
-      <table className="w-full min-w-[900px] border-collapse text-[13px]">
-        <thead>
-          <tr className="border-b text-left text-xs tracking-wide text-muted-foreground">
-            <th className="px-3 py-2.5 font-medium">Severity</th>
-            <th className="px-3 py-2.5 font-medium">Blocker</th>
-            <th className="px-3 py-2.5 font-medium">Stage</th>
-            <th className="px-3 py-2.5 font-medium">Owner</th>
-            <th className="px-3 py-2.5 font-medium">State</th>
-            <th className="px-3 py-2.5 font-medium">Exit condition</th>
-            <th className="px-3 py-2.5 font-medium">Next decision</th>
+    <div tabIndex={0} role="region" aria-label="Scrollable release blockers" className="overflow-x-auto rounded-[24px] bg-card focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand">
+      <table className="w-full min-w-[900px] border-collapse text-[13px] leading-6">
+        <thead className="bg-muted">
+          <tr className="text-left text-xs text-muted-foreground">
+            <th className="px-4 py-4 font-medium">Severity</th>
+            <th className="px-4 py-4 font-medium">Blocker</th>
+            <th className="px-4 py-4 font-medium">Stage</th>
+            <th className="px-4 py-4 font-medium">Owner</th>
+            <th className="px-4 py-4 font-medium">State</th>
+            <th className="px-4 py-4 font-medium">Exit condition</th>
+            <th className="px-4 py-4 font-medium">Next decision</th>
           </tr>
         </thead>
         <tbody>
@@ -50,46 +50,46 @@ export function BlockerList({ blockers, today }: { blockers: BlockerView[]; toda
             <Fragment key={b.id}>
             {i === firstResolved && (
               <tr>
-                <td colSpan={7} className="bg-muted/60 px-3 py-1.5 text-xs font-medium tracking-wide text-muted-foreground">
+                <td colSpan={7} className="bg-muted/70 px-4 py-3 text-xs font-medium text-muted-foreground">
                   Resolved this cycle
                 </td>
               </tr>
             )}
-            <tr className="border-b align-top last:border-b-0 hover:bg-muted/50">
-              <td className="px-3 py-2.5">
+            <tr className="border-b border-border/60 align-top last:border-b-0 hover:bg-muted/50">
+              <td className="px-4 py-4">
                 <StatusBadge tone={SEVERITY_TONE[b.severity]} label={b.severity} />
               </td>
-              <td className="max-w-[320px] px-3 py-2.5">
-                <a href={b.url} target="_blank" rel="noreferrer" className="font-medium hover:text-brand hover:underline">
+              <td className="max-w-[320px] px-4 py-4">
+                <a href={b.url} target="_blank" rel="noreferrer" className="rounded-sm break-words font-medium hover:text-brand hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
                   {b.title}
                 </a>
-                <div className="mt-0.5 flex items-center gap-2 text-xs text-muted-foreground">
-                  {b.blockingDependency && <span>blocks: {b.blockingDependency}</span>}
+                <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs leading-5 text-muted-foreground">
+                  {b.blockingDependency && <span className="break-words">blocks: {b.blockingDependency}</span>}
                   {b.notionUrl && (
                     <a
                       href={b.notionUrl}
                       target="_blank"
                       rel="noreferrer"
-                      className="inline-flex items-center gap-0.5 hover:text-brand"
+                      className="inline-flex items-center gap-1 rounded-sm hover:text-brand focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                     >
                       <FileText aria-hidden className="size-3" /> context
                     </a>
                   )}
                 </div>
               </td>
-              <td className="px-3 py-2.5">{b.stage}</td>
-              <td className="px-3 py-2.5 whitespace-nowrap">{b.owner}</td>
-              <td className="px-3 py-2.5">
+              <td className="px-4 py-4">{b.stage}</td>
+              <td className="px-4 py-4 whitespace-nowrap">{b.owner}</td>
+              <td className="px-4 py-4">
                 <StatusBadge
                   tone={LIVE_TONE[b.live.state]}
                   label={LIVE_LABEL[b.live.state]}
                   title={b.live.state === "unknown" ? b.live.error : `checked ${b.live.checkedAt}`}
                 />
               </td>
-              <td className="max-w-[280px] px-3 py-2.5 text-muted-foreground">{b.exitCondition}</td>
+              <td className="max-w-[280px] break-words px-4 py-4 text-muted-foreground">{b.exitCondition}</td>
               <td
                 className={cn(
-                  "px-3 py-2.5 whitespace-nowrap",
+                  "px-4 py-4 whitespace-nowrap",
                   pastDue(b.nextDecisionDate, today) && "font-medium text-tone-red",
                 )}
               >
