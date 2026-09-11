@@ -59,13 +59,32 @@ describe("buildWorkRows", () => {
     ]);
   });
 
-  it("marks only stable, published, and compatible components inactive and preserves closed PR meaning", () => {
+  it("preserves every component and marks only stable, published, and compatible components inactive", () => {
     const rows = buildWorkRows([
       component("stable", { status: "stable-released" }), component("published", { status: "docs-published" }),
       component("compatible", { status: "compatible" }), component("rc", { status: "rc-released" }), component("unknown", { status: "unknown" }),
     ], [work("closed-pr", { live: { state: "closed", checkedAt: "2026-09-11T12:00:00Z" } })]);
-    expect(rows.map((r) => r.active)).toEqual([false, false, false, true, true, false]);
-    expect(rows.at(-1)).toMatchObject({ status: "Closed, unmerged", tone: "gray" });
+    expect(rows.map((r) => r.id)).toEqual(["component-stable", "component-published", "component-compatible", "component-rc", "component-unknown"]);
+    expect(rows.map((r) => r.active)).toEqual([false, false, false, true, true]);
+  });
+
+  it("keeps open and unknown work while excluding both merged PRs and closed work", () => {
+    const items = [
+      work("open-pr"),
+      work("unknown", { live: { state: "unknown", error: "GitHub unavailable", checkedAt: "2026-09-11T12:00:00Z" } }),
+      work("merged-pr", { live: { state: "merged", checkedAt: "2026-09-11T12:00:00Z" } }),
+      work("closed-pr", { live: { state: "closed", checkedAt: "2026-09-11T12:00:00Z" } }),
+      work("closed-issue", { kind: "issue", live: { state: "closed", checkedAt: "2026-09-11T12:00:00Z" } }),
+      work("open-issue", { kind: "issue", category: "follow-up" }),
+    ];
+    const before = JSON.stringify(items);
+    Object.freeze(items);
+    const rows = buildWorkRows([], items);
+    expect(rows.map((r) => r.id)).toEqual(["work-open-pr", "work-unknown", "work-open-issue"]);
+    expect(rows.map((r) => [r.status, r.tone, r.active])).toEqual([
+      ["Open", "amber", true], ["Unknown", "gray", true], ["Open", "amber", true],
+    ]);
+    expect(JSON.stringify(items)).toBe(before);
   });
 
   it("keeps work semantics independent of its associated component's readiness", () => {
@@ -76,7 +95,7 @@ describe("buildWorkRows", () => {
     ]);
     expect(rows[1]).toMatchObject({ component: published, owner: "assignee", ownerLabel: "Assignee", active: true, date: "2026-09-15", dateLabel: "Decision date" });
     expect(filterAndSortWorkRows(rows, { ...defaults, view: "actions" }).map((r) => r.id)).toEqual(["work-open"]);
-    expect(filterAndSortWorkRows(rows, { ...defaults, view: "history" }).map((r) => r.id)).toEqual(["work-merged"]);
+    expect(rows.map((r) => r.id)).toEqual(["component-docs", "work-open"]);
     expect(filterAndSortWorkRows(rows, { ...defaults, view: "components" }).map((r) => r.id)).toEqual(["component-docs"]);
   });
 });
@@ -96,21 +115,22 @@ describe("filterAndSortWorkRows", () => {
     const result = filterAndSortWorkRows(rows, { ...defaults, view: "actions", group: "devex", type: "migration", query: "  BANK BRIAN  " });
     expect(result.map((r) => r.id)).toEqual(["work-migration"]);
     expect(filterAndSortWorkRows(rows, { ...defaults, view: "components", type: "migration" })).toEqual([]);
-    expect(filterAndSortWorkRows(rows, { ...defaults, view: "history" }).map((r) => r.id)).toEqual(["work-closed"]);
     expect(filterAndSortWorkRows(rows, { ...defaults, view: "actions" }).map((r) => r.id)).not.toContain("component-wallet");
   });
 
-  it("searches versions, status, component labels, and exit criteria; clearing filters restores every row", () => {
+  it("searches versions, status, component labels, and exit criteria; clearing filters restores only current rows", () => {
     expect(filterAndSortWorkRows(rows, { ...defaults, query: "1.16.0" }).map((r) => r.id)).toEqual(["component-wallet"]);
-    expect(filterAndSortWorkRows(rows, { ...defaults, query: "documentation snapshot" }).map((r) => r.id)).toEqual(["work-migration", "work-closed"]);
+    expect(filterAndSortWorkRows(rows, { ...defaults, query: "documentation snapshot" }).map((r) => r.id)).toEqual(["work-migration"]);
     expect(filterAndSortWorkRows(rows, { ...defaults, query: "UNKNOWN TOOLING" }).map((r) => r.id)).toEqual(["component-compiler"]);
     expect(filterAndSortWorkRows(rows, { ...defaults, query: "no-such-item" })).toEqual([]);
-    expect(filterAndSortWorkRows(rows, defaults)).toHaveLength(6);
+    expect(filterAndSortWorkRows(rows, { ...defaults, query: "Merged release notes" })).toEqual([]);
+    expect(filterAndSortWorkRows(rows, defaults)).toHaveLength(5);
+    expect(filterAndSortWorkRows(rows, defaults).map((r) => r.id)).not.toContain("work-closed");
   });
 
   it("orders statuses by attention priority rather than alphabetically", () => {
     const sorted = filterAndSortWorkRows(rows, defaults);
-    expect(sorted.map((r) => r.id)).toEqual(["work-gate", "component-compiler", "work-migration", "component-docs", "component-wallet", "work-closed"]);
+    expect(sorted.map((r) => r.id)).toEqual(["work-gate", "component-compiler", "work-migration", "component-docs", "component-wallet"]);
     expect(filterAndSortWorkRows(rows, { ...defaults, direction: "desc" }).map((r) => r.id)).toEqual([...sorted].reverse().map((r) => r.id));
   });
 

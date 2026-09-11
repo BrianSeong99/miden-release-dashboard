@@ -31,9 +31,10 @@ evidence. Select it again to restore all connections. Lane labels remain visible
 ## Release work
 
 One table includes every configured component, including DevEx and Walnut surfaces, alongside
-tracked blockers, follow-ups and migration PRs. **All** shows every row; **Actions** shows unfinished
-components and open or unverified work; **Components** shows component rows; **History** shows
-closed issues and closed or merged PRs. A component remains visible even when it has no tracked work.
+open blockers, follow-ups and migration PRs. **All** shows components and open or unverified work;
+**Actions** shows unfinished components and that work; **Components** shows component rows.
+Merged and closed work is omitted from every view and count. A component remains visible even when
+it has no open tracked work. Each issue or PR has a visible GitHub URL directly in its row.
 
 Combine the group and type filters with search across work, components, owners, versions and
 dependency checks. Sort by work item, group, component, state, owner/assignee or date. State sorts
@@ -54,8 +55,8 @@ issue/PR state, assignee and decision date; closing work does not establish comp
 - GitHub supplies current titles, assignees and issue/PR state; curated titles and owners are
   fallbacks when evidence is unavailable. Work with no GitHub assignee stays visibly unassigned.
   GitHub authorship does not establish ownership.
-- Completed issues, merged PRs and PRs closed without merge have distinct meanings. Closed work
-  remains visible in **All** and **History**; closure or merge alone does not prove shipment.
+- Completed issues, merged PRs and PRs closed without merge remain in the source snapshots for
+  evidence but do not appear as work rows. Closure or merge alone does not prove shipment.
   Source-backed criteria may record replacement PRs and published-tag inclusion when those have been checked.
 - The original August 31 seed owners and September 3/7 dates were unconfirmed drafts. These are
   now null. Node fee collection is tracked under 0.17 following the upstream 0.17.1 plan;

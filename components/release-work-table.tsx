@@ -1,7 +1,7 @@
 "use client";
 
 import { Fragment, useState } from "react";
-import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, Search, X } from "lucide-react";
+import { ArrowDown, ArrowUp, ArrowUpDown, ChevronRight, ExternalLink, Search, X } from "lucide-react";
 import type { BlockerView, ComponentStatus } from "@/lib/types";
 import { buildWorkRows, filterAndSortWorkRows, type WorkRow } from "@/lib/work-table";
 import { useHydratedClock } from "@/lib/use-hydrated-clock";
@@ -11,11 +11,11 @@ import { ManualBadge } from "./manual-badge";
 import { ReleaseDate } from "./release-date";
 import { StatusBadge } from "./status-badge";
 
-type View = "all" | "actions" | "components" | "history";
+type View = "all" | "actions" | "components";
 type Sort = "title" | "group" | "component" | "owner" | "status" | "date";
 const views: { value: View; label: string }[] = [
   { value: "all", label: "All" }, { value: "actions", label: "Actions" },
-  { value: "components", label: "Components" }, { value: "history", label: "History" },
+  { value: "components", label: "Components" },
 ];
 const kindLabels = { component: "Component", blocker: "Blocker", "follow-up": "Follow-up", migration: "Migration" } as const;
 const controlClass = "min-h-10 rounded-full bg-muted px-4 py-2 text-xs focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -36,7 +36,6 @@ function RowDetails({ row, now }: { row: WorkRow; now: number }) {
       </div>
       <p className="text-xs text-muted-foreground">GitHub state checked <ReleaseDate publishedAt={row.work.live.checkedAt} compact showAge={false} /></p>
       {row.work.live.state === "unknown" && <p className="text-xs text-muted-foreground">{row.work.live.error}</p>}
-      {!row.active && <p className="text-xs text-muted-foreground">Closing an issue or merging a PR does not by itself prove publication or deployment.</p>}
     </div>}
     {row.component && <div className="min-w-0 max-w-xl"><ComponentNode component={row.component} now={now} /></div>}
   </div>;
@@ -102,7 +101,7 @@ export function ReleaseWorkTable({ components, work, generatedAt }: {
       {hasFilters && <button type="button" onClick={clear} className="inline-flex min-h-10 cursor-pointer items-center gap-1.5 rounded-full px-3 text-xs text-muted-foreground hover:text-foreground focus-visible:outline-2 focus-visible:outline-brand"><X aria-hidden className="size-3.5" />Clear filters</button>}
       <p role="status" className="text-xs text-muted-foreground sm:ml-auto">{visible.length} of {rows.length} items</p>
     </div>
-    <p className="text-xs leading-5 text-muted-foreground">Actions shows unfinished components and open or unverified work. Component state and issue/PR state are separate facts. Expand a row for its checks and evidence.</p>
+    <p className="text-xs leading-5 text-muted-foreground">Only open or unverified issues and PRs are shown. Actions also filters components to unfinished work. Expand a row for its checks and evidence.</p>
     <div tabIndex={0} role="region" aria-label="Unified release work" className="max-h-[720px] overflow-auto rounded-[24px] bg-card focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand">
       <table className="w-full min-w-[1060px] border-collapse text-left text-[13px] leading-5">
         <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground"><tr>
@@ -115,7 +114,13 @@ export function ReleaseWorkTable({ components, work, generatedAt }: {
             <tr data-testid={`work-row-${row.id}`} className={cn("border-b border-border/60 align-top hover:bg-muted/50", open && "bg-muted/50")}>
               <td className="max-w-[360px] px-4 py-4"><div className="flex items-start gap-2">
                 <button type="button" aria-expanded={open} aria-controls={`work-details-${row.id}`} onClick={() => setExpanded(open ? null : row.id)} aria-label={`${open ? "Hide" : "Show"} details for ${row.title}`} className="-ml-2 flex size-8 shrink-0 cursor-pointer items-center justify-center rounded-full hover:bg-muted focus-visible:outline-2 focus-visible:outline-brand"><ChevronRight aria-hidden className={cn("size-4 transition-transform motion-reduce:transition-none", open && "rotate-90")} /></button>
-                <div className="min-w-0 pt-1"><a href={row.url} target="_blank" rel="noreferrer" className={cn(linkClass, "break-words")}>{row.title}</a><div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{kindLabels[row.kind]}</span>{row.kind === "blocker" && <span className="text-tone-red">{row.work?.severity}</span>}{c?.manual && row.kind === "component" && <ManualBadge note={c.manualNote} />}</div></div>
+                <div className="min-w-0 pt-1">
+                  <a href={row.url} target="_blank" rel="noreferrer" className={cn(linkClass, "break-words")}>{row.title}</a>
+                  {row.work && <a href={row.url} target="_blank" rel="noreferrer" aria-label={`View ${row.title}: ${row.url}`} className={cn(linkClass, "mt-2 flex items-start gap-1.5 text-xs text-brand underline underline-offset-2")}>
+                    <span className="min-w-0 break-all">{row.url.replace(/^https?:\/\//, "")}</span><ExternalLink aria-hidden className="mt-0.5 size-3 shrink-0" />
+                  </a>}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground"><span>{kindLabels[row.kind]}</span>{row.kind === "blocker" && <span className="text-tone-red">{row.work?.severity}</span>}{c?.manual && row.kind === "component" && <ManualBadge note={c.manualNote} />}</div>
+                </div>
               </div></td>
               <td className="px-4 py-4 text-muted-foreground">{row.groupLabel}</td>
               <td className="px-4 py-4">{row.componentLabel}</td>

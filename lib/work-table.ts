@@ -23,7 +23,7 @@ export interface WorkRow {
 }
 
 export interface WorkTableOptions {
-  view: "all" | "actions" | "components" | "history";
+  view: "all" | "actions" | "components";
   group: string;
   type: "all" | WorkRow["kind"];
   query: string;
@@ -52,7 +52,7 @@ function groupOf(component?: ComponentStatus): string {
   return component.id === "compiler" || component.id === "debugger" ? "toolchain" : component.group;
 }
 
-/** Every component remains visible independently of any linked issue or PR. */
+/** Keep all components, plus work that is open or whose current state is unknown. */
 export function buildWorkRows(components: readonly ComponentStatus[], work: readonly BlockerView[]): WorkRow[] {
   const byId = new Map(components.map((component) => [component.id, component]));
   const componentRows = components.map((component): WorkRow => {
@@ -66,7 +66,7 @@ export function buildWorkRows(components: readonly ComponentStatus[], work: read
       url: `https://github.com/${component.repo}`, component,
     };
   });
-  const workRows = work.map((item): WorkRow => {
+  const workRows = work.filter(isOpenWork).map((item): WorkRow => {
     const component = byId.get(item.stage);
     const group = groupOf(component);
     const status = item.live.state === "closed" ? item.kind === "pull-request" ? "Closed, unmerged" : "Closed"
@@ -105,8 +105,7 @@ export function filterAndSortWorkRows(rows: readonly WorkRow[], options: WorkTab
   const terms = options.query.trim().toLowerCase().split(/\s+/).filter(Boolean);
   const filtered = rows.filter((row) =>
     (options.view === "all" || (options.view === "actions" && row.active)
-      || (options.view === "components" && row.kind === "component")
-      || (options.view === "history" && row.kind !== "component" && !row.active))
+      || (options.view === "components" && row.kind === "component"))
     && (options.group === "all" || row.group === options.group)
     && (options.type === "all" || row.kind === options.type)
     && (terms.length === 0 || terms.every((term) => searchableText(row).includes(term))),
