@@ -132,12 +132,18 @@ describe("DependencyDag", () => {
     }
     for (const edge of container.querySelectorAll<SVGPathElement>("path[data-from]")) {
       const path = edge.getAttribute("d")!;
-      expect(path).toMatch(/[CQ]/);
+      expect(path).not.toContain("C");
+      const from = cards.find((card) => card.id === edge.dataset.from)!;
+      const to = cards.find((card) => card.id === edge.dataset.to)!;
+      if (from.y !== to.y) expect(path).toContain("Q");
       let previous = { x: 0, y: 0 };
       for (const [, command, coordinates] of path.matchAll(/([MLQC]) ([^MLQC]+)/g)) {
         const values = coordinates.trim().split(/\s+/).map(Number);
         expect(values.every(Number.isFinite)).toBe(true);
         const points = Array.from({ length: values.length / 2 }, (_, i) => ({ x: values[2 * i], y: values[2 * i + 1] }));
+        if (command === "L") {
+          expect(points[0].x === previous.x || points[0].y === previous.y).toBe(true);
+        }
         if (command !== "M") {
           // A Bezier stays inside the convex hull of its endpoints and controls.
           // Keeping the entire bounding box clear is a conservative collision check.
