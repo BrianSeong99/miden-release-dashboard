@@ -28,7 +28,24 @@ evidence. Select it again to restore all connections. Lane labels remain visible
   Owner and next-decision date must be explicit: use `null` when unconfirmed, rather than inventing
   an owner or deadline. Empty/missing fields still fail validation; every record needs a criterion.
 
-## Release work evidence
+## Release work
+
+One table includes every configured component, including DevEx and Walnut surfaces, alongside
+tracked blockers, follow-ups and migration PRs. **All** shows every row; **Actions** shows unfinished
+components and open or unverified work; **Components** shows component rows; **History** shows
+closed issues and closed or merged PRs. A component remains visible even when it has no tracked work.
+
+Combine the group and type filters with search across work, components, owners, versions and
+dependency checks. Sort by work item, group, component, state, owner/assignee or date. State sorts
+by attention priority; missing owners and dates remain last in either direction. Clear filters
+restores all rows when a combination has no matches.
+
+Expand a row for component checks and source links, including Docs snapshot/publication evidence,
+Tutorials' MidenBank dependency and migration PRs. Work details also show the curated scope, exit
+criterion and context. Component state, owner and publication/deployment date remain separate from
+issue/PR state, assignee and decision date; closing work does not establish component readiness.
+
+### Evidence and classification
 
 - `category: blocker` means a confirmed release gate; `follow-up` tracks other work or risk;
   `migration` tracks version adoption. Category defaults to `follow-up`. Severity alone does not
@@ -38,8 +55,8 @@ evidence. Select it again to restore all connections. Lane labels remain visible
   fallbacks when evidence is unavailable. Work with no GitHub assignee stays visibly unassigned.
   GitHub authorship does not establish ownership.
 - Completed issues, merged PRs and PRs closed without merge have distinct meanings. Closed work
-  remains in history; closure or merge alone does not prove shipment. Source-backed criteria may
-  record replacement PRs and published-tag inclusion when those have been checked.
+  remains visible in **All** and **History**; closure or merge alone does not prove shipment.
+  Source-backed criteria may record replacement PRs and published-tag inclusion when those have been checked.
 - The original August 31 seed owners and September 3/7 dates were unconfirmed drafts. These are
   now null. Node fee collection is tracked under 0.17 following the upstream 0.17.1 plan;
   multisig sponsorship and wallet recovery remain follow-ups with current applicability unconfirmed.

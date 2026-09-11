@@ -4,28 +4,14 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import useSWR from "swr";
 import { RefreshCw } from "lucide-react";
-import type { BlockerView, DashboardSnapshot } from "@/lib/types";
-import { BlockerList } from "./blocker-list";
-import { ComponentNode } from "./component-node";
+import type { DashboardSnapshot } from "@/lib/types";
+import { ReleaseWorkTable } from "./release-work-table";
 import { DependencyDag } from "./dependency-dag";
 import { ManualBadge } from "./manual-badge";
 import { ReleaseOverview } from "./release-overview";
 import { RefreshStatus } from "./refresh-status";
 import { fetchSnapshot, SNAPSHOT_REFRESH_INTERVAL } from "@/lib/snapshot-fetcher";
-import { isCriticalReleaseBlocker, isOpenWork } from "@/lib/release-work";
 import { ReleaseTimingPanel } from "./release-timing-panel";
-import { useHydratedClock } from "@/lib/use-hydrated-clock";
-
-function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
-  const open = blockers.filter(isOpenWork);
-  const critical = open.filter(isCriticalReleaseBlocker).length;
-  const closed = blockers.length - open.length;
-  return (
-    <span className="rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-      {critical} confirmed critical · {open.length} open · {closed} closed/merged
-    </span>
-  );
-}
 
 function Section({
   title,
@@ -71,13 +57,11 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
     refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
   });
   const snapshot = data ?? initial;
-  const now = useHydratedClock(snapshot.generatedAt);
   const switchRelease = (v: string) => {
     setVersion(v);
     router.replace(v === initial.release.targetVersion ? "/" : `/?release=${v}`, { scroll: false });
   };
   const generated = new Date(snapshot.generatedAt);
-  const today = snapshot.generatedAt.slice(0, 10);
 
   return (
     <main className="mx-auto my-3 flex w-[calc(100%_-_24px)] max-w-[1664px] flex-col overflow-hidden rounded-[28px] bg-card sm:my-6 sm:w-[calc(100%_-_48px)] sm:rounded-[40px]">
@@ -145,33 +129,17 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       </Section>
 
       <Section
-        title="Release timing"
-      >
-        <ReleaseTimingPanel components={snapshot.components} generatedAt={snapshot.generatedAt} releaseVersion={snapshot.release.targetVersion} />
-      </Section>
-
-      <Section
-        title="Developer experience"
-      >
-        <p className="text-sm text-muted-foreground">Docs, tutorials, templates, and Walnut surfaces for this release. Dependency alignment and publication are checked separately.</p>
-        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-          {snapshot.components.filter((c) => c.group === "devex" || c.group === "walnut").map((c) => (
-            <ComponentNode key={c.id} component={c} now={now} />
-          ))}
-        </div>
-      </Section>
-
-      <Section
         title="Release work"
         aside={
-          <span className="flex flex-wrap items-center gap-2">
-            <BlockerCounts blockers={snapshot.blockers} />
-            <ManualBadge note="Work selection, classification and exit criteria are curated. Titles, assignees and state refresh from GitHub. Decision dates are shown only when explicitly set." />
-          </span>
+          <ManualBadge note="Work selection, classification and exit criteria are curated. Component checks and GitHub titles, assignees and states refresh automatically. Decision dates are shown only when explicitly set." />
         }
       >
         <p className="text-sm text-muted-foreground">Only confirmed critical blockers gate readiness. Open follow-ups and migration PRs remain visible without implying that a shipped version is unreleased.</p>
-        <BlockerList blockers={snapshot.blockers} today={today} />
+        <ReleaseWorkTable components={snapshot.components} work={snapshot.blockers} generatedAt={snapshot.generatedAt} />
+      </Section>
+
+      <Section title="Release timing">
+        <ReleaseTimingPanel components={snapshot.components} generatedAt={snapshot.generatedAt} releaseVersion={snapshot.release.targetVersion} />
       </Section>
 
 

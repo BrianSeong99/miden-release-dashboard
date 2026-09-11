@@ -84,15 +84,17 @@ const renderDashboard = () => render(
 describe("DashboardClient", () => {
   beforeEach(() => vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => snapshot })));
   afterEach(() => vi.unstubAllGlobals());
-  it("renders overview, DAG, and blockers from a full snapshot", () => {
+  it("renders all components and tracked work together, with no separate DevEx section", () => {
     renderDashboard();
     expect(screen.getByRole("heading", { name: "Miden Release Dashboard" })).toBeInTheDocument();
     expect(screen.getAllByText("Miden VM").length).toBeGreaterThan(0);
-    expect(screen.getByText("DevEx")).toBeInTheDocument();
+    expect(screen.getAllByText("DevEx").length).toBeGreaterThan(0);
     expect(screen.getByText("0.16.0-rc.3")).toBeInTheDocument(); // devnet chip
-    expect(screen.getByText(/1 confirmed critical · 1 open · 1 closed\/merged/)).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Developer experience" })).toBeInTheDocument();
+    expect(screen.getByText("5 of 5 items")).toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "Developer experience" })).not.toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "Release timing" })).toBeInTheDocument();
+    expect(screen.getByTestId("work-row-component-docs")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show details for Docs" }));
     expect(screen.getByTestId("component-docs")).toBeInTheDocument();
   });
 
