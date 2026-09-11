@@ -165,13 +165,13 @@ export function DependencyDag({
   const selectedRollup = rollups.find((r) => r.group === selected);
 
   return (
-    <section aria-label="Dependency graph" className="flex flex-col gap-3">
+    <section aria-label="Dependency graph" className="flex min-w-0 flex-col gap-4">
       <p className="text-xs text-muted-foreground">Lanes group components by purpose. Arrows show dependencies.</p>
-      <div tabIndex={0} role="region" aria-label="Scrollable dependency map" className="overflow-x-auto rounded-xl border bg-card/40 focus-visible:outline-2 focus-visible:outline-brand">
+      <div tabIndex={0} role="region" aria-label="Scrollable dependency map" className="overflow-x-auto rounded-[24px] bg-muted p-1 focus-visible:outline-2 focus-visible:outline-brand">
         <div className="relative" style={{ width: canvasW, height: canvasH }}>
           {lanes.map((lane) => (
-            <div key={lane.id} data-testid={`dag-lane-${lane.id}`} className="absolute left-0 w-full border-b last:border-b-0 odd:bg-muted/25" style={{ top: lane.y, height: lane.height }}>
-              <span className="sticky left-0 z-10 flex h-full w-24 items-center bg-background px-3 text-xs font-medium text-muted-foreground">{lane.label}</span>
+            <div key={lane.id} data-testid={`dag-lane-${lane.id}`} className="absolute left-0 w-full border-b border-card last:border-b-0" style={{ top: lane.y, height: lane.height }}>
+              <span className="sticky left-0 z-10 flex h-full w-24 items-center bg-muted px-3 text-xs font-medium text-muted-foreground">{lane.label}</span>
             </div>
           ))}
           <svg
@@ -220,7 +220,7 @@ export function DependencyDag({
               aria-controls="dag-detail"
               onClick={() => setSelected(selected === n.id ? null : n.id)}
               className={cn(
-                "absolute flex cursor-pointer flex-col justify-center gap-0.5 rounded-lg border bg-card px-3 py-2 text-left transition-colors",
+                "absolute flex cursor-pointer flex-col justify-center gap-0.5 rounded-[18px] border border-border/60 bg-card px-3 py-2 text-left transition-colors",
                 "hover:border-brand/60 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand",
                 selected === n.id && "border-brand ring-1 ring-brand",
               )}

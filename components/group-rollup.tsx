@@ -26,38 +26,38 @@ export function GroupRollup({
   return (
     <div
       data-testid={`rollup-${title.toLowerCase()}`}
-      className="flex h-full w-full flex-col gap-2.5 rounded-xl border bg-card p-4"
+      className="flex h-full min-w-0 w-full flex-col gap-4 rounded-[24px] bg-muted p-5"
     >
-      <div className="flex items-start justify-between gap-2">
-        <div>
-          <div className="font-semibold">{title}</div>
-          <div className="text-xs text-muted-foreground">{components.length} surfaces</div>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <div className="break-words font-semibold leading-6">{title}</div>
+          <div className="mt-1 text-xs leading-5 text-muted-foreground">{components.length} surfaces</div>
         </div>
         <StatusBadge tone={rollup.tone} label={ROLLUP_LABEL[rollup.status]} title={rollup.reason} />
       </div>
-      <p className="text-xs text-muted-foreground">{rollup.reason}</p>
-      <details className="group border-t pt-2" open={defaultOpen || undefined}>
-        <summary className="flex cursor-pointer list-none items-center gap-1 text-xs font-medium text-muted-foreground select-none hover:text-foreground [&::-webkit-details-marker]:hidden">
+      <p className="break-words text-xs leading-5 text-muted-foreground">{rollup.reason}</p>
+      <details className="group border-t border-white pt-4" open={defaultOpen || undefined}>
+        <summary className="flex cursor-pointer list-none items-center gap-2 rounded-sm text-xs font-medium leading-5 text-muted-foreground select-none hover:text-foreground focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand [&::-webkit-details-marker]:hidden">
           <ChevronDown aria-hidden className="size-3.5 transition-transform group-open:rotate-180" />
           Show surfaces
         </summary>
-        <ul className="mt-2 flex flex-col gap-1.5">
+        <ul className="mt-4 flex flex-col gap-3">
           {components.map((c) => (
-            <li key={c.id} className="flex items-center justify-between gap-2 text-xs">
-              <span className="flex min-w-0 items-center gap-1.5">
+            <li key={c.id} className="flex items-baseline justify-between gap-3 text-xs leading-5">
+              <span className="flex min-w-0 flex-1 flex-wrap items-center gap-x-2 gap-y-1">
                 <StatusDot tone={c.tone} />
                 <a
                   href={`https://github.com/${c.repo}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="truncate hover:text-brand hover:underline"
+                  className="min-w-0 rounded-sm break-words hover:text-brand hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand"
                   title={c.reason}
                 >
                   {c.label}
                 </a>
                 {c.manual && <ManualBadge note={c.manualNote} />}
               </span>
-              <span className="font-mono whitespace-nowrap text-muted-foreground">
+              <span className="min-w-0 max-w-[50%] break-words text-right font-mono text-muted-foreground">
                 {c.deps.find((d) => d.version)?.version ?? c.latestRc ?? "—"}
               </span>
             </li>

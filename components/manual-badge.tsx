@@ -5,7 +5,7 @@ export function ManualBadge({ note }: { note?: string }) {
   return (
     <span
       title={note ?? "Set by hand in config — not automatically verified"}
-      className="inline-flex items-center rounded-full border border-dashed border-tone-gray/50 px-2 py-0.5 text-[11px] font-medium tracking-wide text-tone-gray uppercase"
+      className="inline-flex items-center rounded-full border border-dashed border-tone-gray/40 px-2.5 py-1 text-[11px] font-medium text-tone-gray"
     >
       Manual
     </span>

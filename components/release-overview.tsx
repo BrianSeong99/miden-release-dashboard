@@ -1,4 +1,4 @@
-import { CircleAlert } from "lucide-react";
+import { CircleAlert, Gauge, Network, Rocket, ShieldAlert } from "lucide-react";
 import type { DashboardSnapshot } from "@/lib/types";
 import { ManualBadge } from "./manual-badge";
 import { StatusBadge } from "./status-badge";
@@ -21,16 +21,16 @@ function NowBlocking({ snapshot }: { snapshot: DashboardSnapshot }) {
   return (
     <div
       data-testid="now-blocking"
-      className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl border border-tone-red/30 bg-tone-red-bg px-4 py-2.5 text-sm"
+      className="flex flex-wrap items-center gap-x-3 gap-y-2 rounded-2xl bg-tone-red-bg/70 px-5 py-4 text-sm leading-relaxed"
     >
       <CircleAlert aria-hidden className="size-4 shrink-0 text-tone-red" />
       <span className="font-semibold text-tone-red">Now blocking:</span>
-      <span>
+      <span className="min-w-0 break-words">
         {firstBlocked.label} — {its.length} open critical{its.length === 1 ? "" : "s"}
         {owners && ` (${owners})`}
       </span>
       {its[0] && (
-        <a href={its[0].url} target="_blank" rel="noreferrer" className="text-brand hover:underline">
+        <a href={its[0].url} target="_blank" rel="noreferrer" className="min-w-0 break-words text-brand underline-offset-4 hover:underline">
           {its[0].title.length > 60 ? `${its[0].title.slice(0, 60)}…` : its[0].title}
         </a>
       )}
@@ -58,59 +58,79 @@ const ENV_LABEL = {
   unknown: "Unknown",
 };
 
-function Card({ title, children }: { title: string; children: React.ReactNode }) {
+function Card({ title, icon, dark = false, children }: {
+  title: string;
+  icon: React.ReactNode;
+  dark?: boolean;
+  children: React.ReactNode;
+}) {
   return (
-    <div className="rounded-xl border bg-card p-4">
-      <div className="text-[13px] font-medium tracking-wide text-muted-foreground">{title}</div>
-      <div className="mt-2">{children}</div>
+    <div className={`flex min-w-0 flex-col rounded-[28px] p-6 ${dark ? "bg-[#171717] text-white" : "bg-muted"}`}>
+      <div className="flex items-center justify-between gap-3">
+        <div className={`text-[13px] font-medium ${dark ? "text-white/65" : "text-muted-foreground"}`}>{title}</div>
+        <span aria-hidden className={`flex size-9 shrink-0 items-center justify-center rounded-full ${dark ? "bg-white/10 text-accent" : "bg-card text-foreground"}`}>
+          {icon}
+        </span>
+      </div>
+      <div className="mt-6 flex flex-1 flex-col">{children}</div>
     </div>
   );
 }
 
 export function ReleaseOverview({ snapshot }: { snapshot: DashboardSnapshot }) {
   const r = READINESS_LABEL[snapshot.readiness.level];
+  const readyPercent = snapshot.readiness.totalCount > 0
+    ? Math.min(100, Math.max(0, snapshot.readiness.readyCount / snapshot.readiness.totalCount * 100))
+    : 0;
   return (
-    <div className="flex flex-col gap-3">
+    <div className="flex flex-col gap-5">
     <NowBlocking snapshot={snapshot} />
-    <section aria-label="Release overview" className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-5">
-      <Card title="Target release">
-        <div className="text-2xl font-semibold">{snapshot.release.name}</div>
-        <div className="mt-1 text-xs text-muted-foreground">
+    <section aria-label="Release overview" className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+      <Card title="Target release" icon={<Rocket className="size-4" />} dark>
+        <div className="break-words text-[32px] leading-tight font-semibold tracking-tight">{snapshot.release.name}</div>
+        <div className="mt-3 text-xs leading-relaxed text-white/65">
           {snapshot.release.targetDate ? `target ${snapshot.release.targetDate}` : "no target date set"}
         </div>
+        <span aria-hidden className="mt-6 h-1 w-8 rounded-full bg-accent" />
       </Card>
-      <Card title="Readiness">
-        <div className="flex items-center gap-2">
+      <Card title="Readiness" icon={<Gauge className="size-4" />}>
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
+          <div className="text-[32px] leading-tight font-semibold tracking-tight tabular-nums">
+            {snapshot.readiness.readyCount}<span className="text-lg font-normal text-muted-foreground"> / {snapshot.readiness.totalCount}</span>
+          </div>
           <StatusBadge tone={r.tone} label={r.label} />
         </div>
-        <div className="mt-1.5 text-xs text-muted-foreground">
+        <div role="progressbar" aria-label="Release and toolchain stages ready" aria-valuemin={0} aria-valuemax={100} aria-valuenow={readyPercent} aria-valuetext={`${snapshot.readiness.readyCount} of ${snapshot.readiness.totalCount} stages ready`} className="mt-4 h-1.5 overflow-hidden rounded-full bg-foreground/8">
+          <div className="h-full rounded-full bg-accent" style={{ width: `${readyPercent}%` }} />
+        </div>
+        <div className="mt-3 text-xs leading-relaxed text-muted-foreground">
           {snapshot.readiness.readyCount} of {snapshot.readiness.totalCount} release and toolchain stages
           ready · roll-up groups tracked separately
         </div>
       </Card>
       {snapshot.environments.map((env) => (
-        <Card key={env.id} title={env.label}>
-          <div className="flex items-center gap-2">
-            <span className="font-mono text-lg font-semibold">{env.version ?? "—"}</span>
+        <Card key={env.id} title={env.label} icon={<Network className="size-4" />}>
+          <div className="min-w-0 break-all font-mono text-[26px] leading-tight font-semibold tracking-tight">{env.version ?? "—"}</div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
             <StatusBadge tone={env.tone} label={ENV_LABEL[env.status]} title={env.reason} />
             {env.manual && <ManualBadge note={env.manualNote} />}
           </div>
-          <div className="mt-1.5 text-xs text-muted-foreground" title={env.error}>
+          <div className="mt-3 break-words text-xs leading-relaxed text-muted-foreground" title={env.error}>
             {env.reason}
           </div>
         </Card>
       ))}
-      <Card title="Critical blockers">
+      <Card title="Critical blockers" icon={<ShieldAlert className="size-4" />}>
         <div
           className={
             snapshot.readiness.criticalBlockerCount > 0
-              ? "text-2xl font-semibold text-tone-red"
-              : "text-2xl font-semibold text-tone-green"
+              ? "text-[32px] leading-tight font-semibold tracking-tight tabular-nums text-tone-red"
+              : "text-[32px] leading-tight font-semibold tracking-tight tabular-nums text-tone-green"
           }
         >
           {snapshot.readiness.criticalBlockerCount}
         </div>
-        <div className="mt-1 text-xs text-muted-foreground">open, release-gating</div>
+        <div className="mt-3 text-xs leading-relaxed text-muted-foreground">open, release-gating</div>
       </Card>
     </section>
     </div>
