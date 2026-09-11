@@ -43,6 +43,8 @@ const blocker = (severity: BlockerView["severity"], state: "open" | "merged" | "
   id: "b1",
   title: "t",
   severity,
+  category: "blocker",
+  kind: "issue",
   stage: "node",
   owner: "o",
   exitCondition: "e",
@@ -96,6 +98,14 @@ describe("deriveComponentStatus precedence", () => {
     expect(s.status).toBe("blocked");
   });
 
+  it.each(["open", "unknown"] as const)("keeps %s critical follow-ups visible without declaring a released component blocked", (state) => {
+    const followUp = { ...blocker("critical", state), category: "follow-up" as const };
+    const s = deriveComponentStatus(evidence({ releases: okR([release("v0.16.0", false)]), blockers: [followUp] }));
+    expect(s.status).toBe("stable-released");
+    expect(s.blockerIds).toContain(followUp.id);
+    expect(deriveGroupRollup([s], "SDK", [followUp]).status).toBe("compatible");
+  });
+
   it("merged critical blockers and open high blockers do not block", () => {
     const s = deriveComponentStatus(
       evidence({
@@ -104,6 +114,14 @@ describe("deriveComponentStatus precedence", () => {
       }),
     );
     expect(s.status).toBe("stable-released");
+  });
+
+  it("does not infer compatibility when a migration-only PR is no longer open", () => {
+    const s = deriveComponentStatus(evidence({
+      config: { ...baseConfig, id: "agent-tools", group: "devex", dependsOn: [], detectors: [{ type: "migration-pr", number: 17 }] },
+      migrationPrOpen: okR(false),
+    }));
+    expect(s.status).toBe("unknown");
   });
 
   it("a stable on a previous train does not count; the release list alone reads not-started", () => {

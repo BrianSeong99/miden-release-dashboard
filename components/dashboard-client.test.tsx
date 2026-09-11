@@ -60,12 +60,14 @@ const snapshot: DashboardSnapshot = {
   blockers: [
     {
       id: "b1", title: "Fee drain", severity: "critical", stage: "protocol", owner: "mmagician",
+      category: "blocker", kind: "issue",
       exitCondition: "fix merged", nextDecisionDate: "2026-09-03",
       url: "https://github.com/0xMiden/protocol/issues/3763",
       live: { state: "open", checkedAt: at },
     },
     {
       id: "b2", title: "Faucet fee asset", severity: "high", stage: "protocol", owner: "Wiktor",
+      category: "follow-up", kind: "pull-request",
       exitCondition: "merged", nextDecisionDate: "2026-09-03",
       url: "https://github.com/0xMiden/protocol/pull/3766",
       live: { state: "merged", checkedAt: at },
@@ -88,7 +90,9 @@ describe("DashboardClient", () => {
     expect(screen.getByText("Miden VM")).toBeInTheDocument();
     expect(screen.getByText("DevEx")).toBeInTheDocument();
     expect(screen.getByText("0.16.0-rc.3")).toBeInTheDocument(); // devnet chip
-    expect(screen.getByText(/1 critical · 0 other open · 1 resolved/)).toBeInTheDocument();
+    expect(screen.getByText(/1 confirmed critical · 1 open · 1 closed\/merged/)).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Developer experience" })).toBeInTheDocument();
+    expect(screen.getByTestId("component-docs")).toBeInTheDocument();
   });
 
   it("surfaces the first blocked component in the Now-blocking callout", () => {

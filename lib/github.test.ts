@@ -117,6 +117,29 @@ describe("getIssueState", () => {
     const res = await getIssueState("x/y", 2);
     expect(res.ok).toBe(true);
     if (!res.ok) return;
-    expect(res.value).toMatchObject({ state: "open", isPr: false, merged: false });
+    expect(res.value).toMatchObject({ state: "open", isPr: false, merged: false, assignees: [] });
+  });
+
+  it("returns the current title and every GitHub assignee login", async () => {
+    mockFetch(JSON.stringify({
+      state: "open", title: "Clarify recovery behavior", html_url: "https://github.com/x/y/issues/3",
+      assignees: [{ login: "alice", id: 1 }, { login: "bob", id: 2 }],
+    }));
+    const res = await getIssueState("x/y", 3);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.title).toBe("Clarify recovery behavior");
+    expect(res.value.assignees).toEqual(["alice", "bob"]);
+  });
+
+  it("does not invent an owner when GitHub has no assignees", async () => {
+    mockFetch(JSON.stringify({
+      state: "open", title: "Unassigned issue", html_url: "https://github.com/x/y/issues/4",
+      assignees: [], user: { login: "author-is-not-owner" },
+    }));
+    const res = await getIssueState("x/y", 4);
+    expect(res.ok).toBe(true);
+    if (!res.ok) return;
+    expect(res.value.assignees).toEqual([]);
   });
 });

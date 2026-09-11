@@ -40,6 +40,7 @@ export interface IssueLiveState {
   isPr: boolean;
   title: string;
   htmlUrl: string;
+  assignees: string[];
 }
 
 /** A version a detector extracted, with provenance for the evidence link. */
@@ -152,11 +153,14 @@ export interface BlockerView {
   id: string;
   title: string;
   severity: "critical" | "high" | "medium";
+  /** Only explicitly confirmed blockers gate readiness; open work alone does not. */
+  category: "blocker" | "follow-up" | "migration";
+  kind: "issue" | "pull-request" | "unknown";
   stage: string;
   blockingDependency?: string;
-  owner: string;
+  owner: string | null;
   exitCondition: string;
-  nextDecisionDate: string;
+  nextDecisionDate: string | null;
   url: string;
   notionUrl?: string;
   live:

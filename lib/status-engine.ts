@@ -23,6 +23,7 @@ import type {
   RollupStatus,
   Tone,
 } from "./types";
+import { isCriticalReleaseBlocker } from "./release-work";
 
 // Pure status derivation — no I/O. Evidence comes in as Results from the
 // adapters; every rule that concludes something needs POSITIVE evidence.
@@ -270,9 +271,7 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
   // 2. Blocked — an open critical blocker outranks any automated progress.
   //    A blocker whose live state could not be fetched is conservatively
   //    treated as still open (the pill itself shows "unknown").
-  const active = e.blockers.filter(
-    (b) => b.severity === "critical" && b.live.state !== "merged" && b.live.state !== "closed",
-  );
+  const active = e.blockers.filter(isCriticalReleaseBlocker);
   if (active.length > 0) {
     return done(
       "blocked",
@@ -442,8 +441,7 @@ export function deriveEnvStatus(input: {
  * any cannot be verified, green when every member is at least compatible. */
 export function deriveGroupRollup(children: ComponentStatus[], label = "DevEx", blockers: BlockerView[] = []): RollupStatus {
   const criticalBlocker = blockers.some((b) =>
-    children.some((c) => c.id === b.stage) && b.severity === "critical" &&
-    b.live.state !== "merged" && b.live.state !== "closed",
+    children.some((c) => c.id === b.stage) && isCriticalReleaseBlocker(b),
   );
   if (criticalBlocker || children.some((c) => c.status === "blocked")) {
     return { status: "blocked", tone: "red", reason: `A ${label} surface is blocked` };
