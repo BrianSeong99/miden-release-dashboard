@@ -4,6 +4,7 @@ import type { ComponentStatus } from "@/lib/types";
 import { cn } from "@/lib/utils";
 import { EvidenceLink } from "./evidence-link";
 import { ManualBadge } from "./manual-badge";
+import { ReleaseDate } from "./release-date";
 import { StatusBadge } from "./status-badge";
 
 function VersionRow({ label, value }: { label: string; value: string | null }) {
@@ -15,7 +16,13 @@ function VersionRow({ label, value }: { label: string; value: string | null }) {
   );
 }
 
-export function ComponentNode({ component: c }: { component: ComponentStatus }) {
+export function ComponentNode({ component: c, now }: { component: ComponentStatus; now?: number }) {
+  const isDocs = c.docsSnapshot !== undefined || c.releaseTiming?.source === "docs-deployment";
+  const publishedAt = isDocs ? c.docsSnapshot?.publishedAt ?? null : c.matchedPublishedAt;
+  const missingPublication = c.releaseTiming?.source === "not-monitored" ? "Not monitored"
+    : isDocs && c.docsSnapshot?.published === false ? "Not published"
+    : c.releaseTiming?.stableState === "unreleased" && !c.releaseTiming.latestOnTrain && !c.matchedRelease ? "Not released"
+    : "Unknown";
   return (
     <div
       data-testid={`component-${c.id}`}
@@ -51,6 +58,12 @@ export function ComponentNode({ component: c }: { component: ComponentStatus }) 
           <VersionRow label="Latest stable" value={c.latestStable} />
           <VersionRow label="Latest RC" value={c.latestRc} />
         </> : null}
+        <div className="flex items-baseline justify-between gap-3 text-[13px] leading-5">
+          <span className="shrink-0 text-muted-foreground">{isDocs ? "Latest deployment" : "Released"}</span>
+          <span className="min-w-0 break-words text-right">
+            {publishedAt ? <ReleaseDate publishedAt={publishedAt} now={now} /> : missingPublication}
+          </span>
+        </div>
       </div>
 
       {c.deps.length > 0 && (

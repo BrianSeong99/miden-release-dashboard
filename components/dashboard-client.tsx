@@ -13,6 +13,8 @@ import { ReleaseOverview } from "./release-overview";
 import { RefreshStatus } from "./refresh-status";
 import { fetchSnapshot, SNAPSHOT_REFRESH_INTERVAL } from "@/lib/snapshot-fetcher";
 import { isCriticalReleaseBlocker, isOpenWork } from "@/lib/release-work";
+import { ReleaseTimingPanel } from "./release-timing-panel";
+import { useHydratedClock } from "@/lib/use-hydrated-clock";
 
 function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
   const open = blockers.filter(isOpenWork);
@@ -69,6 +71,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
     refreshInterval: SNAPSHOT_REFRESH_INTERVAL,
   });
   const snapshot = data ?? initial;
+  const now = useHydratedClock(snapshot.generatedAt);
   const switchRelease = (v: string) => {
     setVersion(v);
     router.replace(v === initial.release.targetVersion ? "/" : `/?release=${v}`, { scroll: false });
@@ -142,12 +145,18 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       </Section>
 
       <Section
+        title="Release timing"
+      >
+        <ReleaseTimingPanel components={snapshot.components} generatedAt={snapshot.generatedAt} releaseVersion={snapshot.release.targetVersion} />
+      </Section>
+
+      <Section
         title="Developer experience"
       >
         <p className="text-sm text-muted-foreground">Docs, tutorials, templates, and Walnut surfaces for this release. Dependency alignment and publication are checked separately.</p>
         <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
           {snapshot.components.filter((c) => c.group === "devex" || c.group === "walnut").map((c) => (
-            <ComponentNode key={c.id} component={c} />
+            <ComponentNode key={c.id} component={c} now={now} />
           ))}
         </div>
       </Section>

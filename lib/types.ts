@@ -34,6 +34,37 @@ export interface GhRelease {
   htmlUrl: string;
 }
 
+export interface ReleaseHistory {
+  releases: GhRelease[];
+  complete: boolean;
+  error?: string;
+}
+
+/** Publication chronology, separate from the status engine's version ordering. */
+export interface ReleaseTiming {
+  source: "github-release" | "docs-deployment" | "not-monitored";
+  historyComplete: boolean;
+  latest: GhRelease | null;
+  latestOnTrain: GhRelease | null;
+  firstStable: GhRelease | null;
+  stableState: "published" | "unreleased" | "unknown" | "not-monitored";
+  history: GhRelease[];
+  error?: string;
+}
+
+/** Calendar gap between stable publications on a configured dependency edge.
+ * This is not proof of the downstream release's dependency adoption date. */
+export interface PropagationTiming {
+  fromId: string;
+  toId: string;
+  fromLabel: string;
+  toLabel: string;
+  upstream: GhRelease | null;
+  downstream: GhRelease | null;
+  state: "released" | "waiting" | "downstream-first" | "upstream-pending" | "not-monitored" | "unknown";
+  elapsedMs: number | null;
+}
+
 export interface IssueLiveState {
   state: "open" | "closed";
   merged: boolean;
@@ -113,6 +144,8 @@ export interface ComponentStatus {
   matchedRelease: string | null;
   /** When the matched release was published (for "rc.7 · 3d ago"). */
   matchedPublishedAt: string | null;
+  /** Optional while old static snapshots may still be cached by an open tab. */
+  releaseTiming?: ReleaseTiming;
   /** Versioned docs evidence; null means lookup failed, absent means not monitored. */
   docsSnapshot?: DocsSnapshot | null;
   deps: DepFinding[];

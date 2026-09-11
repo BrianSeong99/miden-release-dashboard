@@ -84,6 +84,8 @@ export interface ComponentEvidence {
   config: ComponentConfig;
   /** null when the component has no github-release detector. */
   releases: Result<GhRelease[]> | null;
+  /** False when pagination failed or was capped; observed releases remain evidence. */
+  releaseHistoryComplete?: boolean;
   depFindings: Array<{ detector: Detector; result: Result<DetectedVersion> }>;
   /** Live state of a configured migration PR, when present. */
   migrationPrOpen: Result<boolean> | null;
@@ -181,6 +183,7 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     if (f.error) errors.push(f.error);
   }
   if (e.releases && !e.releases.ok) errors.push(e.releases.error);
+  if (e.releaseHistoryComplete === false) errors.push("Release history is incomplete; latest versions and missing releases cannot be confirmed");
   if (e.migrationPrOpen && !e.migrationPrOpen.ok) errors.push(e.migrationPrOpen.error);
   if (e.docsSnapshot && !e.docsSnapshot.ok) errors.push(e.docsSnapshot.error);
   const docsSnapshot = e.docsSnapshot?.ok ? e.docsSnapshot.value : undefined;
@@ -200,10 +203,10 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
   const releaseInfo = e.releases?.ok === true
     ? pickReleases(e.releases.value.filter((r) => matchesReleaseTag(r.tagName, releaseDetector?.tagPrefixes)), c.expectedVersion)
     : null;
-  const latestStable = releaseInfo?.latestStable
+  const latestStable = e.releaseHistoryComplete !== false && releaseInfo?.latestStable
     ? normalizeVersion(releaseInfo.latestStable.tagName)
     : null;
-  const latestRc = releaseInfo?.latestRc ? normalizeVersion(releaseInfo.latestRc.tagName) : null;
+  const latestRc = e.releaseHistoryComplete !== false && releaseInfo?.latestRc ? normalizeVersion(releaseInfo.latestRc.tagName) : null;
   const matched = releaseInfo?.stableMatch ?? releaseInfo?.rcOnTrain ?? null;
   const matchedRelease = matched ? normalizeVersion(matched.tagName) : null;
   const matchedPublishedAt = matched?.publishedAt ?? null;
@@ -322,6 +325,8 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
       "All monitored dependencies use stable versions on their target trains",
     );
   }
+
+  if (e.releaseHistoryComplete === false) return done("unknown", "Release history is incomplete; the target release may be outside the fetched pages");
 
   // 7. Not started — positive evidence of only previous-train versions,
   //    or a healthy release list with nothing on the target train yet

@@ -3,11 +3,12 @@ import { loadConfig } from "./config";
 import { fetchEnvSnapshot } from "./environments";
 import { getDocsSnapshot, type DocsSnapshot } from "./docs-snapshot";
 import { err } from "./fetch-utils";
-import { getIssueState, listReleases } from "./github";
+import { getIssueState, listReleaseHistory } from "./github";
 import { runDepDetector } from "./manifests";
 import type { BlockerConfig, Detector } from "./schema";
 import { compareDesc } from "./semver-utils";
 import { isCriticalReleaseBlocker } from "./release-work";
+import { deriveReleaseTiming } from "./release-timing";
 import {
   deriveComponentStatus,
   deriveGroupRollup,
@@ -21,6 +22,7 @@ import type {
   DetectedVersion,
   GroupRollupView,
   IssueLiveState,
+  ReleaseHistory,
   Result,
 } from "./types";
 
@@ -42,6 +44,7 @@ const isDepDetector = (
   d.type === "submodule-dep";
 
 export async function buildSnapshot(releaseVersion?: string): Promise<DashboardSnapshot> {
+  const generatedAt = new Date().toISOString();
   const config = loadConfig();
   const { defaultRelease, environments: envConfigs, releases } = config.release;
   const release =
@@ -60,6 +63,16 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
     if (!request) {
       request = getIssueState(repo, number);
       issueRequests.set(key, request);
+    }
+    return request;
+  };
+  const releaseRequests = new Map<string, Promise<Result<ReleaseHistory>>>();
+  const getReleaseHistory = (repo: string) => {
+    const key = repo.toLowerCase();
+    let request = releaseRequests.get(key);
+    if (!request) {
+      request = listReleaseHistory(repo);
+      releaseRequests.set(key, request);
     }
     return request;
   };
@@ -130,8 +143,8 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
       const wantsReleases = c.detectors.some((d) => d.type === "github-release");
       const migrationPrs = c.detectors.filter((d) => d.type === "migration-pr");
       const docsDetector = c.detectors.find((d) => d.type === "docs-snapshot");
-      const [releases, depFindings, migrationPrOpen, docsSnapshot] = await Promise.all([
-        wantsReleases ? listReleases(c.repo) : Promise.resolve(null),
+      const [releaseHistory, depFindings, migrationPrOpen, docsSnapshot] = await Promise.all([
+        wantsReleases ? getReleaseHistory(c.repo) : Promise.resolve(null),
         Promise.all(
           c.detectors.filter(isDepDetector).map(async (detector) => ({
             detector: detector as Detector,
@@ -150,15 +163,17 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
             : getDocsSnapshot(c.repo, c.branch, c.expectedVersion, docsDetector.workflow)
           : Promise.resolve(null),
       ]);
-      return deriveComponentStatus({
+      const component = deriveComponentStatus({
         config: c,
-        releases,
+        releases: releaseHistory?.ok ? { ...releaseHistory, value: releaseHistory.value.releases } : releaseHistory,
+        releaseHistoryComplete: releaseHistory?.ok ? releaseHistory.value.complete : undefined,
         depFindings: depFindings as Array<{ detector: Detector; result: Result<DetectedVersion> }>,
         migrationPrOpen,
         docsSnapshot,
         blockers: blockersByStage.get(c.id) ?? [],
         releaseTargetVersion: release.targetVersion,
       });
+      return { ...component, releaseTiming: deriveReleaseTiming(c, releaseHistory, docsSnapshot, generatedAt) };
     }),
   );
 
@@ -202,7 +217,7 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
   const openCritical = blockerViews.filter(isCriticalReleaseBlocker).length;
 
   return {
-    generatedAt: new Date().toISOString(),
+    generatedAt,
     release: {
       name: release.name,
       targetVersion: release.targetVersion,

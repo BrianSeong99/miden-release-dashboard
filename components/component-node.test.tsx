@@ -1,6 +1,6 @@
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
-import type { ComponentStatus } from "@/lib/types";
+import type { ComponentStatus, ReleaseTiming } from "@/lib/types";
 import { ComponentNode } from "./component-node";
 
 const base: ComponentStatus = {
@@ -35,6 +35,11 @@ const base: ComponentStatus = {
   errors: [],
 };
 
+const timing = (overrides: Partial<ReleaseTiming> = {}): ReleaseTiming => ({
+  source: "github-release", historyComplete: true, latest: null, latestOnTrain: null,
+  firstStable: null, stableState: "unreleased", history: [], ...overrides,
+});
+
 describe("ComponentNode", () => {
   it("keeps docs rows visible when snapshot evidence cannot be fetched", () => {
     render(<ComponentNode component={{ ...base, id: "docs", label: "Docs", status: "unknown", tone: "gray", docsSnapshot: null }} />);
@@ -53,7 +58,8 @@ describe("ComponentNode", () => {
     })} />);
     expect(screen.getByText("Snapshot")).toBeInTheDocument();
     expect(screen.getByText("Not created")).toBeInTheDocument();
-    expect(screen.getByText("Not published")).toBeInTheDocument();
+    expect(screen.getByText("Publication").nextSibling).toHaveTextContent("Not published");
+    expect(screen.getByText("Latest deployment").nextSibling).toHaveTextContent("Not published");
     expect(screen.queryByText("Latest stable")).not.toBeInTheDocument();
     expect(screen.queryByText("Latest RC")).not.toBeInTheDocument();
   });
@@ -85,7 +91,7 @@ describe("ComponentNode", () => {
         }}
       />,
     );
-    expect(screen.getByText("Unknown")).toBeInTheDocument();
+    expect(screen.getByText("Released").nextSibling).toHaveTextContent("Unknown");
     expect(screen.getByText(/rate limit/)).toBeInTheDocument();
   });
 
@@ -118,5 +124,37 @@ describe("ComponentNode", () => {
     );
     expect(screen.getByText("Blocked")).toBeInTheDocument();
     expect(screen.getByText(/2 open critical blockers/)).toBeInTheDocument();
+  });
+
+  it("dates the release on the component's own version train", () => {
+    render(<ComponentNode component={{ ...base, id: "vm", label: "Miden VM", expectedVersion: "0.29.0",
+      matchedRelease: "0.29.4", matchedPublishedAt: "2026-09-09T06:30:45Z" }} now={Date.parse("2026-09-11T09:30:45Z")} />);
+    expect(screen.getByText("Released").nextSibling).toHaveTextContent("2026-09-09 06:30:45 UTC");
+    expect(screen.getByText("Released").nextSibling).toHaveTextContent("2d 3h ago");
+  });
+
+  it("labels docs time as the latest deployment rather than a first release", () => {
+    render(<ComponentNode component={{ ...base, id: "docs", label: "Docs", docsSnapshot: {
+      version: "0.16", snapshotExists: true, published: true,
+      snapshotUrl: "https://github.com/0xMiden/docs/blob/main/versions.json",
+      deploymentUrl: "https://github.com/0xMiden/docs/actions/runs/123", publishedAt: "2026-09-10T02:03:04Z",
+    } }} />);
+    expect(screen.getByText("Latest deployment").nextSibling).toHaveTextContent("2026-09-10 02:03:04 UTC");
+    expect(screen.queryByText("Released")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    [timing({ source: "not-monitored", stableState: "not-monitored" }), "Not monitored"],
+    [timing(), "Not released"],
+    [timing({ stableState: "unknown", historyComplete: false, error: "GitHub unavailable" }), "Unknown"],
+  ])("distinguishes absent publication evidence: %s", (releaseTiming, expected) => {
+    render(<ComponentNode component={{ ...base, matchedRelease: null, releaseTiming }} />);
+    expect(screen.getByText("Released").nextSibling).toHaveTextContent(expected);
+  });
+
+  it("does not call a known RC unreleased when its timestamp is unavailable", () => {
+    render(<ComponentNode component={{ ...base, releaseTiming: timing() }} />);
+    expect(screen.getByText("Released").nextSibling).toHaveTextContent("Unknown");
+    expect(screen.queryByText("Not released")).not.toBeInTheDocument();
   });
 });

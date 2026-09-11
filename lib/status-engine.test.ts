@@ -93,6 +93,21 @@ describe("deriveComponentStatus precedence", () => {
     expect(s.tone).toBe("red");
   });
 
+  it("does not infer absence or latest versions from partial release history", () => {
+    const s = deriveComponentStatus(evidence({ releases: okR([release("v0.15.2", false)]), releaseHistoryComplete: false }));
+    expect(s.status).toBe("unknown");
+    expect(s.latestStable).toBeNull();
+    expect(s.latestRc).toBeNull();
+    expect(s.reason).toContain("incomplete");
+  });
+
+  it("preserves an observed release when history is partial without claiming it is latest", () => {
+    const s = deriveComponentStatus(evidence({ releases: okR([release("v0.16.0", false)]), releaseHistoryComplete: false }));
+    expect(s.status).toBe("stable-released");
+    expect(s.matchedRelease).toBe("0.16.0");
+    expect(s.latestStable).toBeNull();
+  });
+
   it("a blocker with unknown live state is conservatively blocking", () => {
     const s = deriveComponentStatus(evidence({ blockers: [blocker("critical", "unknown")] }));
     expect(s.status).toBe("blocked");
