@@ -1,0 +1,129 @@
+import { fireEvent, render, screen, within } from "@testing-library/react";
+import { describe, expect, it } from "vitest";
+import type { BlockerView, ComponentStatus } from "@/lib/types";
+import { ReleaseWorkTable } from "./release-work-table";
+
+const at = "2026-09-11T12:00:00Z";
+const component = (id: string, label: string, over: Partial<ComponentStatus> = {}): ComponentStatus => ({
+  id, label, repo: `0xMiden/${id}`, branch: "main", owner: "Component team", expectedVersion: "0.16",
+  group: "devex", dependsOn: [], status: "migrating", tone: "amber", manual: false, reason: "Migration in progress",
+  latestStable: null, latestRc: null, matchedRelease: null, matchedPublishedAt: null, deps: [], evidence: [], blockerIds: [], errors: [], ...over,
+});
+const components = [
+  component("protocol", "Protocol", { group: "chain", status: "stable-released", tone: "green", matchedRelease: "0.16.1", matchedPublishedAt: "2026-09-07T08:00:00Z" }),
+  component("docs", "Docs", { owner: "Brian", docsSnapshot: { version: "0.16", snapshotExists: false, published: false, snapshotUrl: "https://github.com/0xMiden/docs/blob/main/versions.json", deploymentUrl: null, publishedAt: null }, evidence: [{ label: "Migration PR", url: "https://github.com/0xMiden/docs/pull/368" }] }),
+  component("agentic-template", "Agentic template", { status: "not-started" }),
+  component("tutorials", "Tutorials", { deps: [{ label: "MidenBank Web SDK", version: "0.15.0", raw: "^0.15.0", targetTrain: "0.16", onTarget: false, url: "https://github.com/0xMiden/tutorials/blob/main/MidenBank/package.json" }] }),
+];
+const workItem = (id: string, over: Partial<BlockerView> = {}): BlockerView => ({
+  id, title: "Refresh docs", severity: "medium", category: "migration", kind: "pull-request", stage: "docs", owner: null,
+  exitCondition: "Publish the v0.16 snapshot", nextDecisionDate: null, url: "https://github.com/0xMiden/docs/pull/368",
+  live: { state: "open", checkedAt: at }, ...over,
+});
+const work = [
+  workItem("docs"),
+  workItem("old", { title: "Superseded fix", category: "follow-up", stage: "protocol", owner: "Past assignee", nextDecisionDate: "2026-09-01", live: { state: "closed", checkedAt: at } }),
+  workItem("risk", { title: "Verify regression", category: "blocker", stage: "protocol", severity: "critical", nextDecisionDate: "2026-09-02", live: { state: "unknown", checkedAt: at, error: "GitHub unavailable" } }),
+];
+const show = () => render(<ReleaseWorkTable components={components} work={work} generatedAt={at} />);
+const row = (id: string) => screen.getByTestId(`work-row-${id}`);
+const rowIds = () => screen.getAllByTestId(/^work-row-/).map((item) => item.getAttribute("data-testid"));
+
+describe("ReleaseWorkTable", () => {
+  it("includes every component and issue independently, without inventing assignees or dates", () => {
+    show();
+    expect(screen.getByRole("status")).toHaveTextContent("7 of 7 items");
+    expect(row("component-agentic-template")).toBeInTheDocument();
+    expect(row("component-docs")).toHaveTextContent("Brian");
+    expect(row("component-docs")).toHaveTextContent("Not published");
+    expect(row("work-docs")).toHaveTextContent("Unassigned");
+    expect(row("work-docs")).toHaveTextContent("Decision dateNot set");
+    expect(row("work-docs")).not.toHaveTextContent("Brian");
+    expect(within(row("component-protocol")).getByText("2026-09-07 08:00:00 UTC")).toHaveAttribute("datetime", "2026-09-07T08:00:00Z");
+    expect(screen.getByText("2026-09-01")).not.toHaveClass("text-tone-red");
+    expect(screen.getByText("2026-09-02")).toHaveClass("text-tone-red");
+  });
+
+  it("switches between unfinished actions, component state, and closed work history", () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: /^Actions/ }));
+    expect(screen.getByRole("status")).toHaveTextContent("5 of 7 items");
+    expect(screen.queryByTestId("work-row-component-protocol")).not.toBeInTheDocument();
+    expect(screen.queryByTestId("work-row-work-old")).not.toBeInTheDocument();
+    expect(row("work-risk")).toHaveTextContent("Unknown");
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }));
+    expect(rowIds()).toEqual(["work-row-work-old"]);
+    expect(row("work-old")).toHaveTextContent("Closed, unmerged");
+    fireEvent.click(screen.getByRole("button", { name: /^Components/ }));
+    expect(rowIds()).toHaveLength(4);
+    expect(row("component-agentic-template")).toBeInTheDocument();
+  });
+
+  it("intersects group, type, and search filters and recovers from no results", () => {
+    show();
+    fireEvent.change(screen.getByRole("combobox", { name: "Group" }), { target: { value: "devex" } });
+    fireEvent.change(screen.getByRole("combobox", { name: "Type" }), { target: { value: "migration" } });
+    expect(rowIds()).toEqual(["work-row-work-docs"]);
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "agentic" } });
+    expect(screen.getByText("No items match these filters.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show all work" }));
+    expect(screen.getByRole("status")).toHaveTextContent("7 of 7 items");
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "agentic" } });
+    expect(rowIds()).toEqual(["work-row-component-agentic-template"]);
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    fireEvent.change(screen.getByRole("searchbox"), { target: { value: "MidenBank" } });
+    expect(rowIds()).toEqual(["work-row-component-tutorials"]);
+  });
+
+  it("sorts visible rows from keyboard-accessible column buttons", () => {
+    show();
+    const sort = screen.getByRole("button", { name: "Sort by Work item" });
+    fireEvent.click(sort);
+    expect(sort.closest("th")).toHaveAttribute("aria-sort", "ascending");
+    expect(rowIds()[0]).toBe("work-row-component-agentic-template");
+    fireEvent.click(sort);
+    expect(sort.closest("th")).toHaveAttribute("aria-sort", "descending");
+    expect(rowIds()[0]).toBe("work-row-work-risk");
+    fireEvent.click(screen.getByRole("button", { name: "Sort by Date" }));
+    expect(rowIds().slice(0, 3)).toEqual(["work-row-work-old", "work-row-work-risk", "work-row-component-protocol"]);
+  });
+
+  it("retains docs snapshot, migration, and Bank dependency evidence in expandable rows", () => {
+    show();
+    fireEvent.click(screen.getByRole("button", { name: "Show details for Docs" }));
+    const docs = screen.getByTestId("component-docs");
+    expect(docs).toHaveTextContent("SnapshotNot created");
+    expect(docs).toHaveTextContent("PublicationNot published");
+    expect(within(docs).getByRole("link", { name: "Migration PR" })).toHaveAttribute("href", "https://github.com/0xMiden/docs/pull/368");
+    expect(screen.getByRole("button", { name: "Hide details for Docs" })).toHaveAttribute("aria-expanded", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Show details for Tutorials" }));
+    expect(screen.queryByTestId("component-docs")).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "MidenBank Web SDK" })).toHaveAttribute("href", "https://github.com/0xMiden/tutorials/blob/main/MidenBank/package.json");
+    expect(screen.getByTestId("component-tutorials")).toHaveTextContent("0.15.0 ✗");
+    fireEvent.click(screen.getByRole("button", { name: "Show details for Refresh docs" }));
+    expect(screen.getByText("Publish the v0.16 snapshot")).toBeInTheDocument();
+    expect(screen.getByTestId("component-docs")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Show details for Verify regression" }));
+    expect(screen.getByText("GitHub unavailable")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Hide details for Verify regression" }));
+    expect(screen.queryByText("GitHub unavailable")).not.toBeInTheDocument();
+  });
+
+  it("updates filtered views when fresh GitHub state arrives", () => {
+    const { rerender } = show();
+    fireEvent.click(screen.getByRole("button", { name: /^Actions/ }));
+    fireEvent.change(screen.getByRole("combobox", { name: "Type" }), { target: { value: "migration" } });
+    expect(rowIds()).toEqual(["work-row-work-docs"]);
+    rerender(<ReleaseWorkTable components={components} work={work.map((item) => item.id === "docs" ? { ...item, live: { state: "merged", checkedAt: at } } : item)} generatedAt={at} />);
+    expect(screen.getByText("No items match these filters.")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /^History/ }));
+    expect(rowIds()).toEqual(["work-row-work-docs"]);
+    expect(row("work-docs")).toHaveTextContent("Merged");
+  });
+
+  it("distinguishes an empty dataset from an empty filter result", () => {
+    render(<ReleaseWorkTable components={[]} work={[]} generatedAt={at} />);
+    expect(screen.getByText("No components or release work tracked for this version.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Show all work" })).not.toBeInTheDocument();
+  });
+});

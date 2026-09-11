@@ -59,7 +59,7 @@ it("hydrates a 288-minute-old dashboard with header freshness status and updates
     });
     expect(onRecoverableError).not.toHaveBeenCalled();
     expect(within(container).getByRole("heading", { name: "Miden Release Dashboard" })).toBe(originalHeading);
-    const freshness = within(container).getByRole("status");
+    const freshness = within(container.querySelector("header")!).getByRole("status");
     expect(freshness.closest("header")).not.toBeNull();
     expect(freshness).toHaveTextContent("Refresh delayed · 288m old");
     expect(within(container).queryByRole("alert")).not.toBeInTheDocument();
@@ -69,7 +69,7 @@ it("hydrates a 288-minute-old dashboard with header freshness status and updates
     await act(async () => {
       resolveFetch(new Response(JSON.stringify(fresh), { status: 200 }));
     });
-    await waitFor(() => expect(within(container).getByRole("status")).toHaveTextContent("Scheduled every 15 minutes"));
+    await waitFor(() => expect(freshness).toHaveTextContent("Scheduled every 15 minutes"));
     expect(container.querySelector("time")).toHaveAttribute("datetime", openedAt);
     expect(container.querySelector("time")).toHaveTextContent("16:48:00 UTC");
     expect(within(container).getByTestId("dag-node-vm")).toHaveTextContent("0.29.5");
