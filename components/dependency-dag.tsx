@@ -8,7 +8,7 @@ import { cn } from "@/lib/utils";
 import { ComponentNode } from "./component-node";
 import { GroupRollup, ROLLUP_LABEL } from "./group-rollup";
 import { StatusDot } from "./status-badge";
-import { dependencyWaypoints, layoutDependencies, NODE_H, NODE_W, type DependencyLane } from "@/lib/dependency-layout";
+import { dependencyPath, layoutDependencies, NODE_H, NODE_W, type DependencyLane } from "@/lib/dependency-layout";
 
 // Functional lanes group purpose. Only configured edges imply dependencies;
 // selecting a component isolates its immediate upstream/downstream relations.
@@ -190,13 +190,12 @@ export function DependencyDag({
               if (!from || !to) return null;
               const active = selected !== null && (e.from === selected || e.to === selected);
               if (selected !== null && !active) return null;
-              const points = dependencyWaypoints(from, to, index);
               return (
                 <path
                   key={`${e.from}->${e.to}`}
                   data-from={e.from}
                   data-to={e.to}
-                  d={points.map((point, i) => `${i === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ")}
+                  d={dependencyPath(from, to, index)}
                   opacity={active ? 1 : 0.7}
                   strokeLinejoin="round"
                   fill="none"

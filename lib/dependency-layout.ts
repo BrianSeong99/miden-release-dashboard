@@ -73,7 +73,38 @@ export function dependencyWaypoints(from: PositionedDependency, to: PositionedDe
   if (from.lane === to.lane && to.column === from.column + 1) return [start, end];
   const exitX = start.x + 12 + (index % 3) * 6;
   const entryX = end.x - 12 - (index % 3) * 6;
-  const gutterY = to.y - 10 - (index % 4) * 4;
+  const gutterY = to.y - 18 - (index % 3) * 3;
   return [start, { x: exitX, y: start.y }, { x: exitX, y: gutterY },
     { x: entryX, y: gutterY }, { x: entryX, y: end.y }, end];
+}
+
+/** Smooth adjacent connections within their column gap. Longer routes keep
+ * their clear gutters, with tangent curves replacing each right-angle bend. */
+export function dependencyPath(from: PositionedDependency, to: PositionedDependency, index: number) {
+  const points = dependencyWaypoints(from, to, index);
+  const start = points[0];
+  const end = points[points.length - 1];
+  if (to.column === from.column + 1) {
+    const middleX = (start.x + end.x) / 2;
+    return `M ${start.x} ${start.y} C ${middleX} ${start.y} ${middleX} ${end.y} ${end.x} ${end.y}`;
+  }
+
+  const commands = [`M ${start.x} ${start.y}`];
+  for (let i = 1; i < points.length - 1; i++) {
+    const previous = points[i - 1], corner = points[i], next = points[i + 1];
+    const incoming = Math.hypot(corner.x - previous.x, corner.y - previous.y);
+    const outgoing = Math.hypot(next.x - corner.x, next.y - corner.y);
+    const radius = Math.min(16, incoming / 2, outgoing / 2);
+    const before = {
+      x: corner.x + (previous.x - corner.x) * radius / incoming,
+      y: corner.y + (previous.y - corner.y) * radius / incoming,
+    };
+    const after = {
+      x: corner.x + (next.x - corner.x) * radius / outgoing,
+      y: corner.y + (next.y - corner.y) * radius / outgoing,
+    };
+    commands.push(`L ${before.x} ${before.y} Q ${corner.x} ${corner.y} ${after.x} ${after.y}`);
+  }
+  commands.push(`L ${end.x} ${end.y}`);
+  return commands.join(" ");
 }
