@@ -1,118 +1,144 @@
-# Critical blockers for Miden v0.16 — manually curated, live state fetched
-# from GitHub at refresh time. Every entry REQUIRES owner, exitCondition and
-# nextDecisionDate; the build fails otherwise (scripts/validate-config.ts).
-#
-# Severity `critical` turns its stage red on the dependency graph.
-# Seeded 2026-08-31 from release coordination; owners/dates are drafts for
-# the release driver to confirm.
+# Curated release work; titles, assignees and issue/PR state come from GitHub.
+# Severity describes impact; only category: blocker confirms a release gate.
+# Owner and nextDecisionDate must be explicit, with null for unconfirmed values.
+# Reviewed against public GitHub evidence on 2026-09-11. The original draft
+# owners/dates were unconfirmed and have been removed. Closed references remain
+# as history; their closure alone does not establish that work shipped.
 
 blockers:
   - id: protocol-fee-guarded-multisig
-    title: "Guarded multisig auth must pay the transaction fee (0.16 backport)"
+    title: "fix: pay the transaction fee in guarded multisig auth (0.16 backport)"
     severity: critical
+    category: follow-up
     release: "0.16"
     stage: protocol
     blockingDependency: "Guardian accounts paying fees"
-    owner: "Wiktor"
-    exitCondition: "PR merged into release/v0.16.0-rc and shipped in the next 0.16 RC"
-    nextDecisionDate: "2026-09-03"
+    owner: null
+    # https://github.com/0xMiden/protocol/pull/3765#issuecomment-5482446306
+    # Replacement merge commits are ancestors of published v0.16.1.
+    exitCondition: "Superseded by protocol #3784–#3786; their merged fixes are included in v0.16.1"
+    nextDecisionDate: null
     github: { repo: 0xMiden/protocol, number: 3765 }
 
   - id: protocol-faucet-fee-asset
-    title: "User fungible faucets must be able to hold the native fee asset"
+    title: "fix: let user fungible faucets hold the native fee asset"
     severity: high
+    category: follow-up
     release: "0.16"
     stage: protocol
     blockingDependency: "User faucets holding native fee assets"
-    owner: "Wiktor"
-    exitCondition: "PR merged into release/v0.16.0-rc and shipped in the next 0.16 RC"
-    nextDecisionDate: "2026-09-03"
+    owner: null
+    # https://github.com/0xMiden/protocol/compare/0ba181f337dbcc942edffdf0b6a1a7f0edbfe956...v0.16.1
+    exitCondition: "Merged into the 0.16 release branch and included in published v0.16.1"
+    nextDecisionDate: null
     github: { repo: 0xMiden/protocol, number: 3766 }
 
   - id: protocol-fee-conversion-drain
-    title: "AuthMultisig: unbounded fee conversion lets approvers drain the vault"
+    title: "AuthMultisig: unbounded fee conversion lets approvers drain the vault via the fee note"
     severity: critical
+    category: follow-up
     release: "0.16"
     stage: protocol
-    blockingDependency: "Fee security sign-off for 0.16"
-    owner: "mmagician"
-    exitCondition: "Fee-conversion outflow bounded and fix merged into the 0.16 RC train"
-    nextDecisionDate: "2026-09-03"
+    blockingDependency: "Multisig fee-payment fix"
+    owner: null
+    # https://github.com/0xMiden/protocol/pull/3802
+    # Merge commit fb1e40da0f7cec156963e5d815a51a18a8313f25 is the v0.16.1 tag.
+    exitCondition: "Completed upstream; protocol #3802 supplies the fix in published v0.16.1"
+    nextDecisionDate: null
     github: { repo: 0xMiden/protocol, number: 3763 }
 
   - id: protocol-sponsorship-outflow
-    title: "Reduced-quorum vault drain: pay_fee sponsorship outflow is uncapped"
+    title: "Reduced-quorum vault drain: pay_fee's sponsorship outflow is unbounded and not sized by the auth threshold (sibling of #3763, not closed by #3758)"
     severity: critical
+    category: follow-up
     release: "0.16"
     stage: protocol
-    blockingDependency: "Fee security sign-off for 0.16"
-    owner: "mmagician"
-    exitCondition: "Sponsorship outflow sized by the auth threshold; fix merged into the 0.16 RC train"
-    nextDecisionDate: "2026-09-03"
+    blockingDependency: "Multisig sponsorship risk; release applicability unconfirmed"
+    owner: null
+    # https://github.com/0xMiden/protocol/issues/3768
+    # Open risk reproduced on then-current next; no current v0.16 gate is stated.
+    exitCondition: "Confirm current release applicability and track upstream resolution of the sponsorship/threshold issue"
+    nextDecisionDate: null
     github: { repo: 0xMiden/protocol, number: 3768 }
 
   - id: node-batch-fees
-    title: "Node: support batch fee handling"
+    title: "Support Batch fee handling"
     severity: high
-    release: "0.16"
+    category: follow-up
+    release: "0.17"
     stage: node
-    blockingDependency: "protocol fee model"
-    owner: "mmagician"
-    exitCondition: "Batch fee handling implemented in the block-producer and shipped in a 0.16 RC"
-    nextDecisionDate: "2026-09-07"
+    blockingDependency: "Protocol fee-collection scripts and account components planned for 0.17.1"
+    owner: null
+    # https://github.com/0xMiden/node/issues/2501#issuecomment-5526037232
+    # Live assignee: Mirko-von-Leipzig. The comment names 0.17.1, not a 0.16 gate.
+    exitCondition: "Complete batch fee validation and collection; supporting protocol scripts and account components are planned for 0.17.1"
+    nextDecisionDate: null
     github: { repo: 0xMiden/node, number: 2501 }
 
   - id: rust-sdk-fee-conversion-args
-    title: "Rust SDK: accept fee conversion info on guarded multisig accounts"
+    title: "feat: adopt protocol 0.16.0-rc.9 and pay fees from guarded and smart multisig"
     severity: high
+    category: follow-up
     release: "0.16"
     stage: rust-sdk
-    blockingDependency: "protocol#3765"
-    owner: "Wiktor"
-    exitCondition: "PR merged and shipped in a rust-sdk 0.16 RC"
-    nextDecisionDate: "2026-09-07"
+    blockingDependency: "Protocol 0.16.0-rc.9 guarded and smart multisig fee support"
+    owner: null
+    # https://github.com/0xMiden/rust-sdk/compare/8f1d9de6c2e9bd8e0a8e236349a0aff1080504c8...v0.16.0
+    exitCondition: "Merged; protocol rc.9 and guarded/smart multisig fee support are included in published v0.16.0"
+    nextDecisionDate: null
     github: { repo: 0xMiden/rust-sdk, number: 2465 }
 
   - id: rust-sdk-fee-funded-wallets
-    title: "Rust SDK test-node: emit MIDEN-funded genesis wallets when fees are enabled"
+    title: "feat(test-node): emit MIDEN-funded genesis wallets when fees are enabled"
     severity: high
+    category: follow-up
     release: "0.16"
     stage: rust-sdk
     blockingDependency: "downstream fee testing"
-    owner: "Wiktor"
-    exitCondition: "PR merged; fee-funded genesis wallets available to downstream test suites"
-    nextDecisionDate: "2026-09-07"
+    owner: null
+    # https://github.com/0xMiden/rust-sdk/pull/2466#issuecomment-5527752803
+    # Replacement #2455 is included in published v0.16.0; this PR did not merge.
+    exitCondition: "Superseded by Rust SDK #2455, which runs integration tests with fees and is included in v0.16.0"
+    nextDecisionDate: null
     github: { repo: 0xMiden/rust-sdk, number: 2466 }
 
   - id: web-sdk-fee-conversion-args
-    title: "Web SDK: commit fee conversion info to transaction auth args"
+    title: "feat(web-client): commit fee conversion info to transaction auth args"
     severity: high
+    category: follow-up
     release: "0.16"
     stage: web-sdk
-    blockingDependency: "protocol#3765"
-    owner: "Wiktor"
-    exitCondition: "PR merged and shipped in a web-sdk 0.16 RC"
-    nextDecisionDate: "2026-09-07"
+    blockingDependency: "Protocol 0.16 fee-conversion auth arguments"
+    owner: null
+    # https://github.com/0xMiden/web-sdk/compare/7d8dfdd796791eeee8403070d6a3ec5762beb8fd...v0.16.0
+    exitCondition: "Merged; fee-conversion auth argument support is included in published v0.16.0"
+    nextDecisionDate: null
     github: { repo: 0xMiden/web-sdk, number: 348 }
 
   - id: wallet-fees-every-path
-    title: "Wallet: pay transaction fees on every path, proven in CI"
+    title: "feat(fees): pay transaction fees on every path, and prove it in CI"
     severity: critical
+    category: follow-up
     release: "0.16"
     stage: wallet
-    blockingDependency: "SDK fee-conversion support"
-    owner: "Wiktor"
-    exitCondition: "PR merged with CI coverage proving fees are paid on all wallet paths"
-    nextDecisionDate: "2026-09-03"
+    blockingDependency: "Protocol #3786 and Guardian #453 fee support"
+    owner: null
+    # https://github.com/0xMiden/wallet/compare/d27d5663dfc7716d97a30cb645d3364f22a73b15...v1.16.0
+    exitCondition: "Merged; fee handling and CI coverage are included in published wallet v1.16.0"
+    nextDecisionDate: null
     github: { repo: 0xMiden/wallet, number: 806 }
 
   - id: wallet-guardian-recovery-lockout
     title: "Seed-recovered Guardian account can be permanently locked behind its own rotation gate"
     severity: critical
+    category: follow-up
     release: "0.16"
     stage: wallet
-    blockingDependency: "Guardian recovery flow"
-    owner: "Wiktor"
-    exitCondition: "Recovery flow can no longer lock a recovered Guardian account; fix merged"
-    nextDecisionDate: "2026-09-03"
+    blockingDependency: "Guardian recovery research; current release impact unconfirmed"
+    owner: null
+    # https://github.com/0xMiden/wallet/issues/805
+    # Filed as research/design with an untested escape-path inference, not a
+    # verified current release gate. Its protocol #3765 trigger was superseded.
+    exitCondition: "Verify recovery behavior on current fee-charging releases and decide whether a fix is required"
+    nextDecisionDate: null
     github: { repo: 0xMiden/wallet, number: 805 }

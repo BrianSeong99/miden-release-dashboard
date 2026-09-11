@@ -2,21 +2,21 @@ import { CircleAlert, Gauge, Network, Rocket, ShieldAlert } from "lucide-react";
 import type { DashboardSnapshot } from "@/lib/types";
 import { ManualBadge } from "./manual-badge";
 import { StatusBadge } from "./status-badge";
+import { isCriticalReleaseBlocker, isOpenWork } from "@/lib/release-work";
 
 /** The weekly sync's first question is "what single thing do I chase?" —
  * answer it above the cards: the topologically-first blocked component
  * (components arrive upstream-first from config order), its open critical
  * blockers with owners, and the nearest decision date across open blockers. */
 function NowBlocking({ snapshot }: { snapshot: DashboardSnapshot }) {
-  const openStates = new Set(["open", "unknown"]);
-  const openBlockers = snapshot.blockers.filter((b) => openStates.has(b.live.state));
+  const openBlockers = snapshot.blockers.filter(isOpenWork);
   const firstBlocked = snapshot.components.find((c) => c.status === "blocked");
   if (!firstBlocked) return null;
   const its = openBlockers.filter(
-    (b) => b.stage === firstBlocked.id && b.severity === "critical",
+    (b) => b.stage === firstBlocked.id && isCriticalReleaseBlocker(b),
   );
-  const owners = [...new Set(its.map((b) => b.owner))].join(", ");
-  const nextDecision = openBlockers.map((b) => b.nextDecisionDate).sort()[0];
+  const owners = [...new Set(its.map((b) => b.owner).filter(Boolean))].join(", ");
+  const nextDecision = openBlockers.map((b) => b.nextDecisionDate).filter((date): date is string => date !== null).sort()[0];
   const past = nextDecision !== undefined && nextDecision < snapshot.generatedAt.slice(0, 10);
   return (
     <div

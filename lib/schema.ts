@@ -132,13 +132,15 @@ export const BlockerSchema = z.strictObject({
   id: z.string().regex(/^[a-z0-9-]+$/),
   title: z.string().min(1),
   severity: z.enum(["critical", "high", "medium"]),
-  /** Which release train this blocker gates, e.g. "0.16". */
+  /** Only an explicitly confirmed blocker may gate a release. */
+  category: z.enum(["blocker", "follow-up", "migration"]).default("follow-up"),
+  /** The release view where this work is tracked, e.g. "0.16". */
   release: trainString,
   stage: z.string().min(1),
   blockingDependency: z.string().optional(),
-  owner: z.string().min(1, "blocker owner is required"),
+  owner: z.string().min(1, "owner must be nonempty or null when unconfirmed").nullable(),
   exitCondition: z.string().min(1, "blocker exit condition is required"),
-  nextDecisionDate: z.iso.date({ error: "blocker next decision date is required" }),
+  nextDecisionDate: z.iso.date({ error: "next decision date must be ISO-formatted or null when unconfirmed" }).nullable(),
   github: z.strictObject({
     repo: z.string().regex(repoPattern),
     number: z.number().int().positive(),

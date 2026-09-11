@@ -5,8 +5,9 @@ import { getDocsSnapshot, type DocsSnapshot } from "./docs-snapshot";
 import { err } from "./fetch-utils";
 import { getIssueState, listReleases } from "./github";
 import { runDepDetector } from "./manifests";
-import type { Detector } from "./schema";
+import type { BlockerConfig, Detector } from "./schema";
 import { compareDesc } from "./semver-utils";
+import { isCriticalReleaseBlocker } from "./release-work";
 import {
   deriveComponentStatus,
   deriveGroupRollup,
@@ -19,6 +20,7 @@ import type {
   DashboardSnapshot,
   DetectedVersion,
   GroupRollupView,
+  IssueLiveState,
   Result,
 } from "./types";
 
@@ -48,23 +50,64 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
     releases[0];
   const releaseBlockers = config.blockers.filter((b) => b.release === release.targetVersion);
 
-  // ---- Blockers first: their live state feeds the component derivation. ----
+  // Curated work and migration detectors can reference the same issue. Share
+  // its evidence within this build, but fetch it anew for the next snapshot.
+  const issueKey = (repo: string, number: number) => `${repo.toLowerCase()}#${number}`;
+  const issueRequests = new Map<string, Promise<Result<IssueLiveState>>>();
+  const getLiveIssue = (repo: string, number: number) => {
+    const key = issueKey(repo, number);
+    let request = issueRequests.get(key);
+    if (!request) {
+      request = getIssueState(repo, number);
+      issueRequests.set(key, request);
+    }
+    return request;
+  };
+
+  // Migration PRs are inspectable work even when no one curated a separate
+  // row. An open migration is not, by itself, a confirmed release gate.
+  const releaseWork: BlockerConfig[] = [...releaseBlockers];
+  const workRefs = new Set(releaseWork.map((b) => issueKey(b.github.repo, b.github.number)));
+  for (const component of release.components) {
+    for (const detector of component.detectors) {
+      if (detector.type !== "migration-pr") continue;
+      const key = issueKey(component.repo, detector.number);
+      if (workRefs.has(key)) continue;
+      workRefs.add(key);
+      releaseWork.push({
+        id: `migration-${component.id}-${detector.number}`,
+        category: "migration",
+        title: `${component.label} #${detector.number}`,
+        severity: "medium",
+        release: release.targetVersion,
+        stage: component.id,
+        owner: null,
+        exitCondition: "Merge the migration PR; dependency and publication checks are tracked separately.",
+        nextDecisionDate: null,
+        github: { repo: component.repo, number: detector.number },
+      });
+    }
+  }
+
+  // ---- Work first: its live state feeds the component derivation. ----
   const blockerViews: BlockerView[] = await Promise.all(
-    releaseBlockers.map(async (b): Promise<BlockerView> => {
-      const live = await getIssueState(b.github.repo, b.github.number);
+    releaseWork.map(async (b): Promise<BlockerView> => {
+      const live = await getLiveIssue(b.github.repo, b.github.number);
       return {
         id: b.id,
-        title: b.title,
+        category: b.category,
+        kind: live.ok ? live.value.isPr ? "pull-request" : "issue" : "unknown",
+        title: live.ok ? live.value.title : b.title,
         severity: b.severity,
         stage: b.stage,
         blockingDependency: b.blockingDependency,
-        owner: b.owner,
+        owner: live.ok ? live.value.assignees.join(", ") || null : b.owner,
         exitCondition: b.exitCondition,
         nextDecisionDate: b.nextDecisionDate,
         notionUrl: b.notionUrl,
         url: live.ok
           ? live.value.htmlUrl
-          : `https://github.com/${b.github.repo}/issues/${b.github.number}`,
+          : `https://github.com/${b.github.repo}/${b.category === "migration" ? "pull" : "issues"}/${b.github.number}`,
         live: live.ok
           ? {
               state: live.value.merged ? "merged" : live.value.state === "open" ? "open" : "closed",
@@ -96,7 +139,7 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
           })),
         ),
         migrationPrs.length > 0
-          ? Promise.all(migrationPrs.map((d) => getIssueState(c.repo, d.number))).then((results): Result<boolean> => {
+          ? Promise.all(migrationPrs.map((d) => getLiveIssue(c.repo, d.number))).then((results): Result<boolean> => {
               const failure = results.find((r) => !r.ok);
               if (failure && !failure.ok) return err(failure.error);
               return { ok: true, value: results.some((r) => r.ok && r.value.isPr && r.value.state === "open"), checkedAt: results[0].checkedAt };
@@ -156,9 +199,7 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
       rollup: deriveGroupRollup(components.filter((c) => c.group === group), label, blockerViews),
     }));
 
-  const openCritical = blockerViews.filter(
-    (b) => b.severity === "critical" && b.live.state !== "merged" && b.live.state !== "closed",
-  ).length;
+  const openCritical = blockerViews.filter(isCriticalReleaseBlocker).length;
 
   return {
     generatedAt: new Date().toISOString(),

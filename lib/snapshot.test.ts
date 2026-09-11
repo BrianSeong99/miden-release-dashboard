@@ -8,6 +8,7 @@ vi.mock("next/cache", () => ({
 }));
 
 import { buildSnapshot } from "./snapshot";
+import * as configuration from "./config";
 
 const fixture = (name: string) =>
   fs.readFileSync(path.join(__dirname, "../test/fixtures", name), "utf8");
@@ -35,8 +36,10 @@ function route(url: string): { body: string; status: number } {
   if (/\/issues\/\d+$/.test(u.pathname)) {
     return {
       body: JSON.stringify({
-        state: "open", title: "t", html_url: `https://github.com${u.pathname}`,
-        pull_request: /\/(docs|tutorials|frontend-template|miden-playground|miden-source-code-verification)\/issues\//.test(u.pathname)
+        state: "open", title: `Current title for ${u.pathname.split("/").slice(-3).join("/")}`,
+        html_url: `https://github.com${u.pathname.replace(/^\/repos/, "")}`,
+        assignees: [],
+        pull_request: /\/(docs|tutorials|frontend-template|project-template|agent-tools|miden-playground|miden-source-code-verification)\/issues\//.test(u.pathname)
           ? { merged_at: null } : undefined,
       }),
       status: 200,
@@ -87,7 +90,10 @@ function route(url: string): { body: string; status: number } {
   return { body: "not found", status: 404 };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
 
 describe("buildSnapshot", () => {
   it("assembles the full dashboard from live-shaped payloads", async () => {
@@ -104,15 +110,17 @@ describe("buildSnapshot", () => {
     expect(snap.release.name).toBe("Miden v0.16");
     expect(snap.releases.map((r) => r.targetVersion)).toEqual(["0.15", "0.16", "0.17"]);
     expect(snap.releases.find((r) => r.isDefault)?.targetVersion).toBe("0.16");
-    expect(snap.components).toHaveLength(17);
-    expect(snap.blockers).toHaveLength(10);
+    expect(snap.components.map((c) => c.id)).toEqual(expect.arrayContaining([
+      "vm", "protocol", "node", "compiler", "debugger", "midenup", "docs", "tutorials", "project-template", "agent-tools",
+    ]));
+    expect(snap.blockers.some((b) => b.id === "protocol-fee-guarded-multisig")).toBe(true);
     expect(snap.environments).toHaveLength(2);
     expect(snap.rollups.map((r) => r.group)).toEqual(["devex", "walnut"]);
 
     const byId = new Map(snap.components.map((c) => [c.id, c]));
-    // Protocol & wallet carry open critical blockers → blocked outranks the RC.
-    expect(byId.get("protocol")?.status).toBe("blocked");
-    expect(byId.get("wallet")?.status).toBe("blocked");
+    // Curated follow-ups are visible work, not automatically release blockers.
+    expect(byId.get("protocol")?.status).toBe("rc-released");
+    expect(byId.get("wallet")?.status).not.toBe("blocked");
     // Node: rc release + on-train exact pin.
     expect(byId.get("node")?.status).toBe("rc-released");
     // A next_version label is not a snapshot; open migration PRs show progress.
@@ -129,15 +137,14 @@ describe("buildSnapshot", () => {
     // Environments: devnet on the 0.16 train, testnet behind (recorded payloads).
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
     expect(envs).toEqual({ devnet: "current", testnet: "behind" });
-    // Readiness reflects the blockers.
-    expect(snap.readiness.level).toBe("blocked");
-    expect(snap.readiness.criticalBlockerCount).toBe(5);
+    expect(snap.readiness.level).not.toBe("blocked");
+    expect(snap.readiness.criticalBlockerCount).toBe(0);
   });
 
   it("recognizes active v16 DevEx migration while main dependencies still target v15", async () => {
     vi.stubGlobal("fetch", vi.fn(async (url: string) => {
       const u = new URL(url);
-      if (/\/repos\/0xMiden\/(tutorials|frontend-template)\/contents\//.test(u.pathname)) {
+      if (/\/repos\/0xMiden\/(tutorials|frontend-template|project-template)\/contents\//.test(u.pathname)) {
         return new Response(u.pathname.endsWith("package.json")
           ? JSON.stringify({ dependencies: { "@miden-sdk/miden-sdk": "0.15.3" } })
           : '[dependencies]\nmiden-client = "0.15"\n');
@@ -150,10 +157,74 @@ describe("buildSnapshot", () => {
     expect(byId.get("docs")?.status).toBe("migrating");
     expect(byId.get("tutorials")?.status).toBe("migrating");
     expect(byId.get("frontend-template")?.status).toBe("migrating");
-    expect(byId.get("project-template")?.status).toBe("prerelease-deps");
+    expect(byId.get("project-template")?.status).toBe("migrating");
+    expect(byId.get("agent-tools")?.status).toBe("migrating");
     expect(byId.get("midenup")?.status).toBe("prerelease-deps");
     expect(byId.get("tutorials")?.evidence.some((e) => e.url.endsWith("/pull/249"))).toBe(true);
     expect(snap.rollups.find((r) => r.group === "devex")?.rollup.tone).toBe("amber");
+    for (const [stage, number] of [["docs", 357], ["docs", 368], ["tutorials", 249], ["frontend-template", 28], ["frontend-template", 29], ["project-template", 64], ["agent-tools", 17]] as const) {
+      expect(snap.blockers.find((b) => b.stage === stage && b.url.endsWith(`/${number}`))).toMatchObject({
+        category: "migration", kind: "pull-request", severity: "medium", owner: null, nextDecisionDate: null,
+        live: { state: "open" },
+      });
+    }
+  });
+
+  it.each([
+    { state: "open", mergedAt: null, status: "migrating", workState: "open" },
+    { state: "closed", mergedAt: "2026-09-11T07:00:00Z", status: "unknown", workState: "merged" },
+  ])("tracks agent-tools migration PR #17 as $workState without inventing a dependency pin", async ({ state, mergedAt, status: expectedStatus, workState }) => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/repos/0xMiden/agent-tools/issues/17")) {
+        return new Response(JSON.stringify({
+          state, title: "Update agent skills for v0.16", assignees: [],
+          html_url: "https://github.com/0xMiden/agent-tools/pull/17", pull_request: { merged_at: mergedAt },
+        }));
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    expect(snap.components.find((c) => c.id === "agent-tools")).toMatchObject({
+      status: expectedStatus, deps: [], latestStable: null, matchedRelease: null,
+    });
+    expect(snap.blockers.find((b) => b.stage === "agent-tools")).toMatchObject({
+      category: "migration", kind: "pull-request", title: "Update agent skills for v0.16",
+      url: "https://github.com/0xMiden/agent-tools/pull/17", live: { state: workState },
+    });
+  });
+
+  it("keeps tutorials migrating when MidenBank remains on v0.15 after the other tutorials migrate", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const u = new URL(url);
+      if (u.pathname === "/repos/0xMiden/tutorials/issues/249") {
+        return new Response(JSON.stringify({
+          state: "closed", title: "Migrate tutorials except MidenBank", assignees: [],
+          html_url: "https://github.com/0xMiden/tutorials/pull/249", pull_request: { merged_at: "2026-09-11T07:00:00Z" },
+        }));
+      }
+      if (u.pathname.startsWith("/repos/0xMiden/tutorials/contents/")) {
+        if (u.pathname.endsWith("examples/miden-bank/integration/Cargo.toml")) {
+          return new Response('[dependencies]\nmiden-client = "0.15.3"\n');
+        }
+        return new Response(u.pathname.endsWith("package.json")
+          ? JSON.stringify({ dependencies: { "@miden-sdk/miden-sdk": "0.16.0" } })
+          : '[dependencies]\nmiden-client = "0.16.0"\n');
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    const tutorials = snap.components.find((c) => c.id === "tutorials")!;
+    expect(tutorials.status).toBe("migrating");
+    expect(tutorials.deps.find((d) => d.url?.endsWith("examples/miden-bank/integration/Cargo.toml"))).toMatchObject({
+      version: "0.15.3", onTarget: false, provesComponent: "rust-sdk",
+    });
+    expect(tutorials.deps).toEqual(expect.arrayContaining([
+      expect.objectContaining({ version: "0.16.0", onTarget: true, provesComponent: "rust-sdk" }),
+      expect.objectContaining({ version: "0.16.0", onTarget: true, provesComponent: "web-sdk" }),
+    ]));
+    expect(snap.blockers.find((b) => b.stage === "tutorials")?.live.state).toBe("merged");
   });
 
   it("keeps docs in progress when one migration PR closes and another remains open", async () => {
@@ -166,6 +237,8 @@ describe("buildSnapshot", () => {
     }));
     const snap = await buildSnapshot("0.16");
     expect(snap.components.find((c) => c.id === "docs")?.status).toBe("migrating");
+    expect(snap.blockers.find((b) => b.stage === "docs" && b.url.endsWith("/357"))?.live.state).toBe("merged");
+    expect(snap.blockers.find((b) => b.stage === "docs" && b.url.endsWith("/368"))?.live.state).toBe("open");
   });
 
   it("builds a past-release view: blockers filtered out, devnet reads ahead", async () => {
@@ -178,7 +251,7 @@ describe("buildSnapshot", () => {
     );
     const snap = await buildSnapshot("0.15");
     expect(snap.release.targetVersion).toBe("0.15");
-    expect(snap.blockers).toHaveLength(0); // all seed blockers gate 0.16
+    expect(snap.blockers).toHaveLength(0);
     expect(snap.components.find((c) => c.id === "docs")?.status).toBe("docs-published");
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
     // Recorded payloads: testnet runs 0.15.0 (current for this view), devnet
@@ -192,14 +265,109 @@ describe("buildSnapshot", () => {
       vi.fn(async () => new Response("{}", { status: 500 })),
     );
     const snap = await buildSnapshot();
-    expect(snap.components).toHaveLength(17);
+    expect(snap.components.length).toBeGreaterThan(0);
     for (const c of snap.components) {
-      // Blockers' live state is unknown → conservatively blocking for critical
-      // stages; everything else has no evidence → unknown. Manual stays manual.
       if (c.manual) continue;
-      expect(["unknown", "blocked"]).toContain(c.status);
+      expect(c.status).toBe("unknown");
     }
     expect(snap.environments.every((e) => e.status === "unknown")).toBe(true);
     expect(snap.blockers.every((b) => b.live.state === "unknown")).toBe(true);
+    expect(snap.blockers.every((b) => b.kind === "unknown")).toBe(true);
+    expect(snap.blockers.find((b) => b.stage === "project-template")).toMatchObject({
+      category: "migration", title: "Project template #64", owner: null, nextDecisionDate: null,
+    });
+    expect(snap.readiness.criticalBlockerCount).toBe(0);
+  });
+
+  it("uses live GitHub titles and assignees, including an explicitly unassigned issue", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/repos/0xMiden/protocol/issues/3765")) {
+        return new Response(JSON.stringify({
+          state: "open", title: "Updated fee behavior", html_url: "https://github.com/0xMiden/protocol/pull/3765",
+          assignees: [{ login: "alice" }, { login: "bob" }], pull_request: { merged_at: null },
+        }));
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    expect(snap.blockers.find((b) => b.id === "protocol-fee-guarded-multisig")).toMatchObject({
+      title: "Updated fee behavior", owner: "alice, bob", kind: "pull-request", category: "follow-up",
+      url: "https://github.com/0xMiden/protocol/pull/3765", live: { state: "open" },
+    });
+    expect(snap.blockers.find((b) => b.id === "protocol-fee-conversion-drain")).toMatchObject({
+      title: "Current title for protocol/issues/3763", owner: null, kind: "issue",
+    });
+  });
+
+  it("preserves curated fallback information as unknown when GitHub fails", async () => {
+    const config = configuration.loadConfig();
+    config.blockers[0] = { ...config.blockers[0], title: "Confirmed fallback title", owner: "release-driver" };
+    vi.spyOn(configuration, "loadConfig").mockReturnValue(config);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/repos/0xMiden/protocol/issues/3765")) return new Response("{}", { status: 500 });
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    expect(snap.blockers.find((b) => b.id === config.blockers[0].id)).toMatchObject({
+      title: "Confirmed fallback title", owner: "release-driver", kind: "unknown", live: { state: "unknown" },
+    });
+  });
+
+  it("deduplicates migration references already curated and shares one issue lookup per build", async () => {
+    const config = configuration.loadConfig();
+    config.blockers.push({
+      id: "tutorial-migration-review", category: "follow-up", title: "Review the tutorials migration",
+      severity: "medium", release: "0.16", stage: "tutorials", owner: null, nextDecisionDate: null,
+      exitCondition: "Review the migration", github: { repo: "0xMiden/tutorials", number: 249 },
+    });
+    vi.spyOn(configuration, "loadConfig").mockReturnValue(config);
+    const fetch = vi.fn(async (url: string) => {
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    });
+    vi.stubGlobal("fetch", fetch);
+    const snap = await buildSnapshot("0.16");
+    expect(snap.blockers.filter((b) => b.url.endsWith("/tutorials/issues/249"))).toHaveLength(1);
+    expect(snap.blockers.find((b) => b.id === "tutorial-migration-review")?.category).toBe("follow-up");
+    expect(fetch.mock.calls.filter(([url]) => url.endsWith("/repos/0xMiden/tutorials/issues/249"))).toHaveLength(1);
+    await buildSnapshot("0.16");
+    expect(fetch.mock.calls.filter(([url]) => url.endsWith("/repos/0xMiden/tutorials/issues/249"))).toHaveLength(2);
+  });
+
+  it("keeps node #2501 in the v0.17 work list and out of v0.16", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const current = await buildSnapshot("0.16");
+    const next = await buildSnapshot("0.17");
+    expect(current.blockers.some((b) => b.id === "node-batch-fees")).toBe(false);
+    expect(next.blockers.find((b) => b.id === "node-batch-fees")).toMatchObject({
+      category: "follow-up", kind: "issue", stage: "node", live: { state: "open" },
+    });
+  });
+
+  it.each([
+    { state: "open", critical: 1, status: "blocked" },
+    { state: "closed", critical: 0, status: "rc-released" },
+    { state: "unknown", critical: 1, status: "blocked" },
+  ])("counts a confirmed blocker with $state evidence without counting critical follow-ups", async ({ state, critical, status: expectedStatus }) => {
+    const config = configuration.loadConfig();
+    config.blockers[0].category = "blocker";
+    vi.spyOn(configuration, "loadConfig").mockReturnValue(config);
+    vi.stubGlobal("fetch", vi.fn(async (url: string) => {
+      if (url.endsWith("/repos/0xMiden/protocol/issues/3765")) {
+        return state === "unknown" ? new Response("{}", { status: 500 }) : new Response(JSON.stringify({
+          state, title: "Confirmed release gate", html_url: "https://github.com/0xMiden/protocol/issues/3765", assignees: [],
+        }));
+      }
+      const { body, status } = route(url);
+      return new Response(body, { status });
+    }));
+    const snap = await buildSnapshot("0.16");
+    expect(snap.readiness.criticalBlockerCount).toBe(critical);
+    expect(snap.components.find((c) => c.id === "protocol")?.status).toBe(expectedStatus);
   });
 });

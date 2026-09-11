@@ -107,6 +107,7 @@ export async function getIssueState(
       state: "open" | "closed";
       title: string;
       html_url: string;
+      assignees?: Array<{ login: string }>;
       pull_request?: { merged_at: string | null };
     };
     return ok({
@@ -115,6 +116,7 @@ export async function getIssueState(
       merged: Boolean(body.pull_request?.merged_at),
       title: body.title,
       htmlUrl: body.html_url,
+      assignees: (body.assignees ?? []).map((assignee) => assignee.login),
     });
   } catch (e) {
     return err(`unreadable issue payload for ${repo}#${number}: ${e instanceof Error ? e.message : e}`);

@@ -28,6 +28,21 @@ describe("BlockerSchema required fields", () => {
   it("accepts a complete blocker", () => {
     expect(BlockerSchema.safeParse(validBlocker).success).toBe(true);
   });
+  it("accepts explicitly unconfirmed owner and decision date", () => {
+    const work = BlockerSchema.parse({ ...validBlocker, owner: null, nextDecisionDate: null });
+    expect(work.owner).toBeNull();
+    expect(work.nextDecisionDate).toBeNull();
+  });
+  it("does not infer a release gate from critical severity", () => {
+    expect(BlockerSchema.parse(validBlocker).category).toBe("follow-up");
+    expect(BlockerSchema.parse({ ...validBlocker, category: "blocker" }).category).toBe("blocker");
+    expect(BlockerSchema.parse({ ...validBlocker, category: "migration" }).category).toBe("migration");
+    expect(BlockerSchema.safeParse({ ...validBlocker, category: "critical" }).success).toBe(false);
+  });
+  it("rejects empty owners and invalid dates rather than treating them as unknown", () => {
+    expect(BlockerSchema.safeParse({ ...validBlocker, owner: "" }).success).toBe(false);
+    expect(BlockerSchema.safeParse({ ...validBlocker, nextDecisionDate: "TBD" }).success).toBe(false);
+  });
   it("rejects unknown keys (typo protection)", () => {
     expect(BlockerSchema.safeParse({ ...validBlocker, ownr: "x" }).success).toBe(false);
   });
@@ -101,12 +116,38 @@ describe("seed config files", () => {
       expect(r.components.length).toBeGreaterThanOrEqual(13);
     }
     expect(config.blockers.length).toBeGreaterThanOrEqual(10);
-    // Every blocker satisfies the PRD's hard requirements.
+    // Seeded accountability and dates were drafts, not verified commitments.
     for (const b of config.blockers) {
-      expect(b.owner).toBeTruthy();
+      expect(b.owner).toBeNull();
       expect(b.exitCondition).toBeTruthy();
-      expect(b.nextDecisionDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
-      expect(b.release).toBe("0.16");
+      expect(b.nextDecisionDate).toBeNull();
+      expect(b.category).toBe("follow-up");
+      expect(b.release).toBe(b.id === "node-batch-fees" ? "0.17" : "0.16");
+    }
+  });
+  it("tracks project-template skills migration only on its v0.16 train", () => {
+    const config = loadConfig();
+    for (const release of config.release.releases) {
+      const project = release.components.find((c) => c.id === "project-template")!;
+      const migration = project.detectors.some((d) => d.type === "migration-pr" && d.number === 64);
+      expect(migration).toBe(release.targetVersion === "0.16");
+    }
+  });
+  it("includes MidenBank in tutorial evidence and tracks the agent-tools migration without invented pins", () => {
+    const config = loadConfig();
+    for (const release of config.release.releases) {
+      const tutorials = release.components.find((c) => c.id === "tutorials")!;
+      expect(tutorials.detectors).toContainEqual(expect.objectContaining({
+        type: "cargo-dep", path: "examples/miden-bank/integration/Cargo.toml",
+        dependency: "miden-client", provesComponent: "rust-sdk",
+      }));
+      const tools = release.components.find((c) => c.id === "agent-tools");
+      if (release.targetVersion === "0.16") {
+        expect(tools?.dependsOn).toEqual([]);
+        expect(tools?.detectors).toEqual([{ type: "migration-pr", number: 17 }]);
+      } else {
+        expect(tools).toBeUndefined();
+      }
     }
   });
   it("BlockersFileSchema rejects a file-level unknown key", () => {

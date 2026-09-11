@@ -3,8 +3,8 @@
 Internal dashboard answering **"where is the next Miden release across the dependency chain?"**
 — automated GitHub + network monitoring for the protocol stack, compiler, debugger, SDKs,
 applications and midenup, with DevEx and Walnut (Playground, Source verification) roll-ups.
-The dependency map also includes DevNet/Testnet deployment visibility and curated release
-blockers. A release dropdown switches between the trains declared in `config/release.yaml`
+The dashboard also includes DevNet/Testnet deployment visibility and tracked release work:
+confirmed blockers, follow-ups and migrations. A release dropdown switches between the trains declared in `config/release.yaml`
 (past, current and upcoming). Pins that lag their upstream's newest RC are flagged inline —
 the layered-RC-skew problem the team otherwise reconstructs by hand.
 
@@ -17,14 +17,32 @@ evidence. Select it again to restore all connections. Lane labels remain visible
 
 - **Automated:** GitHub releases + dependency manifests per component (`config/release.yaml`
   defines the repo, monitored branch and detectors), the network monitor JSON at
-  `status.{devnet,testnet}.miden.io/status`, and live state for each configured blocker.
+  `status.{devnet,testnet}.miden.io/status`, and GitHub titles, assignees and issue/PR states
+  for configured work and migration PRs.
   GitHub Pages serves generated per-release JSON. Deployment is scheduled every 15 minutes;
   GitHub can delay or drop scheduled runs. The browser checks those files every minute,
   bypassing cached snapshots; **Check for updates** retries immediately. A failed source degrades
   the affected evidence to **Unknown** — never a guess.
-- **Manual:** `config/blockers.yaml` (and any `manual-override`
-  detector). Manual data always renders a **Manual** badge. Edit via PR; the build fails on a
-  blocker missing an owner, exit condition or decision date.
+- **Manual:** work selection, release view, category, severity, dependencies and tracked criteria
+  in `config/blockers.yaml`, plus any `manual-override` detector. Manual data is badged. Edit via PR.
+  Owner and next-decision date must be explicit: use `null` when unconfirmed, rather than inventing
+  an owner or deadline. Empty/missing fields still fail validation; every record needs a criterion.
+
+## Release work evidence
+
+- `category: blocker` means a confirmed release gate; `follow-up` tracks other work or risk;
+  `migration` tracks version adoption. Category defaults to `follow-up`. Severity alone does not
+  establish a release gate. A release view groups related work without proving that every entry
+  blocks that release or currently affects its shipped artifacts.
+- GitHub supplies current titles, assignees and issue/PR state; curated titles and owners are
+  fallbacks when evidence is unavailable. Work with no GitHub assignee stays visibly unassigned.
+  GitHub authorship does not establish ownership.
+- Completed issues, merged PRs and PRs closed without merge have distinct meanings. Closed work
+  remains in history; closure or merge alone does not prove shipment. Source-backed criteria may
+  record replacement PRs and published-tag inclusion when those have been checked.
+- The original August 31 seed owners and September 3/7 dates were unconfirmed drafts. These are
+  now null. Node fee collection is tracked under 0.17 following the upstream 0.17.1 plan;
+  multisig sponsorship and wallet recovery remain follow-ups with current applicability unconfirmed.
 
 ## Docs and DevEx evidence
 
@@ -37,9 +55,13 @@ evidence. Select it again to restore all connections. Lane labels remain visible
   that run's exact commit. A target label such as `next_version` does not prove publication.
 - **Tutorials and templates:** configured open migration PRs show **Migrating**. Dependency
   pins must all be verified and stable to show **Compatible**; alpha/RC pins show amber
-  **Prerelease deps**. These checks establish dependency alignment, not runtime validation.
-- **Blockers:** docs publication remains factual; open critical blockers still prevent
-  green group and release readiness.
+  **Prerelease deps**. Tutorial evidence includes the separate MidenBank integration pin because
+  the current tutorial migration excludes it. Project-template skills and Agent tools have their
+  own migration evidence. Agent tools is a skills-only surface without a supported manifest;
+  its open migration PR establishes work in progress, not a verified dependency pin.
+  These checks establish dependency alignment, not runtime validation.
+- **Blockers:** docs publication remains factual. Only confirmed release blockers affect release
+  gating; unrelated open issues, follow-ups and migration PRs do not make a shipped component red.
 
 ## Compiler, debugger and toolchains
 

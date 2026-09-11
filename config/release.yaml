@@ -145,6 +145,11 @@ releases:
             dependency: miden-client
             provesComponent: rust-sdk
             targetTrain: "0.15"
+          - type: cargo-dep
+            path: examples/miden-bank/integration/Cargo.toml
+            dependency: miden-client
+            provesComponent: rust-sdk
+            targetTrain: "0.15"
           - type: npm-dep
             path: web-client/package.json
             dependency: "@miden-sdk/miden-sdk"
@@ -490,6 +495,12 @@ releases:
             provesComponent: web-sdk
           - type: migration-pr
             number: 249
+          # PR #249 excludes MidenBank; track its separate integration pin too.
+          # https://github.com/0xMiden/tutorials/blob/main/examples/miden-bank/integration/Cargo.toml
+          - type: cargo-dep
+            path: examples/miden-bank/integration/Cargo.toml
+            dependency: miden-client
+            provesComponent: rust-sdk
       - id: frontend-template
         label: "Frontend template"
         repo: 0xMiden/frontend-template
@@ -521,6 +532,22 @@ releases:
             path: integration/Cargo.toml
             dependency: miden-client
             provesComponent: rust-sdk
+          # https://github.com/0xMiden/project-template/pull/64
+          - type: migration-pr
+            number: 64
+      - id: agent-tools
+        label: "Agent tools"
+        repo: 0xMiden/agent-tools
+        branch: main
+        owner: "Unconfirmed"
+        expectedVersion: "0.16"
+        group: devex
+        dependsOn: []
+        detectors:
+          # Skills-only repo: no supported dependency manifest to infer a pin.
+          # https://github.com/0xMiden/agent-tools/pull/17
+          - type: migration-pr
+            number: 17
       - id: agentic-template
         label: "Agentic template"
         repo: 0xMiden/agentic-template
@@ -805,6 +832,10 @@ releases:
         detectors:
           - type: cargo-dep
             path: rust-client/Cargo.toml
+            dependency: miden-client
+            provesComponent: rust-sdk
+          - type: cargo-dep
+            path: examples/miden-bank/integration/Cargo.toml
             dependency: miden-client
             provesComponent: rust-sdk
           - type: npm-dep

@@ -8,6 +8,8 @@ const blocker = (over: Partial<BlockerView>): BlockerView => ({
   id: "b1",
   title: "Fee drain",
   severity: "critical",
+  category: "blocker",
+  kind: "issue",
   stage: "protocol",
   owner: "mmagician",
   exitCondition: "fix merged",
@@ -56,6 +58,20 @@ describe("BlockerList", () => {
 
   it("renders an empty state", () => {
     render(<BlockerList blockers={[]} today="2026-08-31" />);
-    expect(screen.getByText(/No critical blockers/)).toBeInTheDocument();
+    expect(screen.getByText(/No release work tracked/)).toBeInTheDocument();
+  });
+
+  it("keeps unmerged PRs in collapsed history and does not invent owners or dates", () => {
+    const { container } = render(<BlockerList blockers={[
+      blocker({ id: "risk", category: "follow-up", owner: null, nextDecisionDate: null }),
+      blocker({ id: "old-pr", kind: "pull-request", live: { state: "closed", checkedAt: at }, nextDecisionDate: "2026-08-01" }),
+    ]} today="2026-09-11" />);
+    expect(screen.getByText("Follow-up")).toBeInTheDocument();
+    expect(screen.getByText("Unassigned")).toBeInTheDocument();
+    expect(screen.getByText("Not set")).toBeInTheDocument();
+    expect(screen.getByText("Closed, unmerged")).toBeInTheDocument();
+    expect(container.querySelector("details")).not.toHaveAttribute("open");
+    expect(screen.getByText("2026-08-01")).not.toHaveClass("text-tone-red");
+    expect(screen.queryByText(/Resolved this cycle/)).not.toBeInTheDocument();
   });
 });

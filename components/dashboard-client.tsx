@@ -6,19 +6,21 @@ import useSWR from "swr";
 import { RefreshCw } from "lucide-react";
 import type { BlockerView, DashboardSnapshot } from "@/lib/types";
 import { BlockerList } from "./blocker-list";
+import { ComponentNode } from "./component-node";
 import { DependencyDag } from "./dependency-dag";
 import { ManualBadge } from "./manual-badge";
 import { ReleaseOverview } from "./release-overview";
 import { RefreshStatus } from "./refresh-status";
 import { fetchSnapshot, SNAPSHOT_REFRESH_INTERVAL } from "@/lib/snapshot-fetcher";
+import { isCriticalReleaseBlocker, isOpenWork } from "@/lib/release-work";
 
 function BlockerCounts({ blockers }: { blockers: BlockerView[] }) {
-  const open = blockers.filter((b) => b.live.state === "open" || b.live.state === "unknown");
-  const critical = open.filter((b) => b.severity === "critical").length;
-  const resolved = blockers.length - open.length;
+  const open = blockers.filter(isOpenWork);
+  const critical = open.filter(isCriticalReleaseBlocker).length;
+  const closed = blockers.length - open.length;
   return (
     <span className="rounded-full bg-muted px-3 py-1.5 text-xs text-muted-foreground">
-      {critical} critical · {open.length - critical} other open · {resolved} resolved
+      {critical} confirmed critical · {open.length} open · {closed} closed/merged
     </span>
   );
 }
@@ -140,14 +142,26 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       </Section>
 
       <Section
-        title="Release blockers"
+        title="Developer experience"
+      >
+        <p className="text-sm text-muted-foreground">Docs, tutorials, templates, and Walnut surfaces for this release. Dependency alignment and publication are checked separately.</p>
+        <div className="grid min-w-0 grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {snapshot.components.filter((c) => c.group === "devex" || c.group === "walnut").map((c) => (
+            <ComponentNode key={c.id} component={c} />
+          ))}
+        </div>
+      </Section>
+
+      <Section
+        title="Release work"
         aside={
           <span className="flex flex-wrap items-center gap-2">
             <BlockerCounts blockers={snapshot.blockers} />
-            <ManualBadge note="Curated in config/blockers.yaml — the State column is live from GitHub" />
+            <ManualBadge note="Work selection, classification and exit criteria are curated. Titles, assignees and state refresh from GitHub. Decision dates are shown only when explicitly set." />
           </span>
         }
       >
+        <p className="text-sm text-muted-foreground">Only confirmed critical blockers gate readiness. Open follow-ups and migration PRs remain visible without implying that a shipped version is unreleased.</p>
         <BlockerList blockers={snapshot.blockers} today={today} />
       </Section>
 
