@@ -5,7 +5,7 @@ on:
     branches: [main]
   schedule:
     # Avoid the busiest quarter-hour boundaries. GitHub may still delay or
-    # drop scheduled events; the stale banner reports actual snapshot age.
+    # drop scheduled events; the header status reports actual snapshot age.
     - cron: "7,22,37,52 * * * *"
   workflow_dispatch:
 

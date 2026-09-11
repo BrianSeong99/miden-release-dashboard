@@ -82,7 +82,7 @@ npm run lint && npx tsc --noEmit && npm run test:coverage && npm run build
 GitHub Pages, fully static: `.github/workflows/pages.yml` regenerates the per-release snapshot
 JSON (`scripts/export-snapshots.ts`) and rebuilds the exported site on a schedule at minutes
 7, 22, 37 and 52 (plus every push to `main`). Scheduling avoids peak quarter-hour boundaries,
-but GitHub Actions does not guarantee those times. The stale banner continues to show actual
+but GitHub Actions does not guarantee those times. The compact header freshness status shows actual
 snapshot age after 30 minutes; checking for updates cannot trigger a server rebuild. Maintainers
 can run the Pages workflow manually if a scheduled event is delayed. The workflow's built-in `GITHUB_TOKEN` covers the API budget; no
 secrets to configure. Live at https://brianseong99.github.io/miden-release-dashboard/.

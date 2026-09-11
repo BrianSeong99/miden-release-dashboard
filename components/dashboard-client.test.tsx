@@ -12,7 +12,7 @@ import { SWRConfig } from "swr";
 const at = "2026-08-31T12:00:00.000Z";
 
 const snapshot: DashboardSnapshot = {
-  generatedAt: new Date().toISOString(), // fresh so the stale banner stays hidden
+  generatedAt: new Date().toISOString(), // fresh so the header shows the normal schedule
   release: { name: "Miden v0.16", targetVersion: "0.16", targetDate: null },
   releases: [
     { name: "Miden v0.15", targetVersion: "0.15", isDefault: false },
