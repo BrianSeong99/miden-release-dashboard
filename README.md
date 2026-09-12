@@ -151,3 +151,10 @@ but GitHub Actions does not guarantee those times. The compact header freshness 
 snapshot age after 30 minutes; checking for updates cannot trigger a server rebuild. Maintainers
 can run the Pages workflow manually if a scheduled event is delayed. The workflow's built-in `GITHUB_TOKEN` covers the API budget; no
 secrets to configure. Live at https://brianseong99.github.io/miden-release-dashboard/.
+
+## Link previews
+
+Open Graph and Twitter cards use the committed 1200 × 630 `public/og-image.png`.
+The artwork matches the dashboard and contains no release versions or live status that could go stale.
+To update it, edit `scripts/generate-og-image.tsx` and run `npx tsx scripts/generate-og-image.tsx`.
+Commit the regenerated PNG with the source changes. No image generation service is needed at runtime.
