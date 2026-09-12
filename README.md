@@ -158,3 +158,8 @@ Open Graph and Twitter cards use the committed 1200 × 630 `public/og-image.png`
 The artwork matches the dashboard and contains no release versions or live status that could go stale.
 To update it, edit `scripts/generate-og-image.tsx` and run `npx tsx scripts/generate-og-image.tsx`.
 Commit the regenerated PNG with the source changes. No image generation service is needed at runtime.
+
+The header and share image use the official Miden wordmark from [miden.xyz](https://www.miden.xyz/).
+The original [SVG wordmark](https://cdn.prod.website-files.com/6a26670ad40ec24a0a8e0c5f/6a2902fbde181744161d90f7_miden-logo.svg)
+and [48 × 48 favicon](https://cdn.prod.website-files.com/6a26670ad40ec24a0a8e0c5f/6a69a8f54e36c9647c85f5a1_miden%20favicon.png)
+are stored unchanged in `public/brand/`, so the site and image generator do not depend on external asset requests.

@@ -20,6 +20,13 @@ export const metadata: Metadata = {
   title,
   description,
   alternates: { canonical: siteUrl },
+  icons: {
+    icon: {
+      url: "https://brianseong99.github.io/miden-release-dashboard/brand/favicon.png",
+      sizes: "48x48",
+      type: "image/png",
+    },
+  },
   openGraph: {
     title,
     description,

@@ -1,16 +1,19 @@
 import React from "react";
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { ImageResponse } from "next/og";
 
 // Static artwork: release versions and readiness belong to the live dashboard.
 // Regenerate with: npx tsx scripts/generate-og-image.tsx
 async function main() {
+  const logo = await readFile("public/brand/miden-logo.svg");
+  const logoDataUrl = `data:image/svg+xml;base64,${logo.toString("base64")}`;
   const image = new ImageResponse(
     <div style={{ width: "100%", height: "100%", display: "flex", background: "#eaeaea", padding: 28 }}>
       <div style={{ width: "100%", height: "100%", display: "flex", position: "relative", overflow: "hidden", background: "#ffffff", borderRadius: 36 }}>
         <div style={{ position: "absolute", top: 44, left: 48, display: "flex", alignItems: "center", gap: 14 }}>
-          <svg width="46" height="46" viewBox="0 0 24 24"><rect width="24" height="24" rx="12" fill="#171717" /><path d="M6 17V7h2.4l3.6 5.2L15.6 7H18v10h-2.3v-6.2L12 15.4 8.3 10.8V17H6z" fill="#ffffff" /></svg>
-          <span style={{ fontSize: 26, color: "#171717" }}>Miden</span>
+          {/* Satori embeds the official SVG into the static PNG. */}
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src={logoDataUrl} width={168} height={52} alt="Miden" />
         </div>
         <div style={{ position: "absolute", top: 48, right: 48, display: "flex", borderRadius: 30, padding: "10px 18px", background: "#f7f7f7", color: "#666666", fontSize: 18 }}>Ecosystem overview</div>
 

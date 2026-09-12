@@ -66,12 +66,10 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
   return (
     <main className="mx-auto my-3 flex w-[calc(100%_-_24px)] max-w-[1664px] flex-col overflow-hidden rounded-[28px] bg-card sm:my-6 sm:w-[calc(100%_-_48px)] sm:rounded-[40px]">
       <header className="flex flex-wrap items-center justify-between gap-x-8 gap-y-6 bg-muted px-5 py-7 sm:px-8 lg:px-10 lg:py-9">
-        <div className="flex items-center gap-3">
-          <svg aria-hidden viewBox="0 0 24 24" className="size-11 shrink-0">
-            <rect width="24" height="24" rx="12" fill="#171717" />
-            <path d="M6 17V7h2.4l3.6 5.2L15.6 7H18v10h-2.3v-6.2L12 15.4 8.3 10.8V17H6z" fill="#fff" />
-          </svg>
-          <div>
+        <div className="flex min-w-0 flex-col items-start gap-4 sm:flex-row sm:items-center">
+          {/* eslint-disable-next-line @next/next/no-img-element -- Official static SVG needs no raster optimization. */}
+          <img src="brand/miden-logo.svg" width={126} height={39} alt="Miden" className="h-auto w-[126px] shrink-0" />
+          <div className="min-w-0">
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">Miden Release Dashboard</h1>
             <p className="mt-1 text-xs leading-relaxed text-muted-foreground">
               Where is {snapshot.release.name} across the dependency chain?
