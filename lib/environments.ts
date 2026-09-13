@@ -63,6 +63,7 @@ export async function fetchEnvSnapshot(statusUrl: string): Promise<Result<EnvSna
     network_name?: string;
     last_updated?: number;
   };
+  if (!Array.isArray(root.services)) return err("Status payload has no service list");
   const services: EnvService[] = [];
   let nodeVersion: string | null = null;
   let blockProducerVersion: string | null = null;
@@ -75,11 +76,27 @@ export async function fetchEnvSnapshot(statusUrl: string): Promise<Result<EnvSna
       nodeVersion = parsed.version;
       blockProducerVersion = parsed.blockProducerVersion;
       chainTip = parsed.chainTip;
+      const rpc = raw.details?.RpcStatus as { block_producer_status?: { status?: string } } | undefined;
+      if (parsed.blockProducerVersion) {
+        const status = rpc?.block_producer_status?.status;
+        services.push({ name: "Block Producer", version: parsed.blockProducerVersion, healthy: !status || status === "Unknown" ? null : status === "Healthy" });
+      }
+    }
+    let probe: EnvService["probe"];
+    let probeError: string | undefined;
+    for (const detail of Object.values(raw.details ?? {})) {
+      if (typeof detail !== "object" || detail === null || !("test" in detail)) continue;
+      const test = detail.test;
+      if (typeof test === "object" && test !== null && "status" in test) {
+        probe = test.status === "Healthy" ? "healthy" : test.status === "Unknown" ? "unknown" : "unhealthy";
+        if ("error" in test && typeof test.error === "string") probeError = truncate(test.error, 300);
+      }
     }
     services.push({
+      probe, probeError,
       name: truncate(name, 60),
       version: parsed.version,
-      healthy: typeof raw.status === "string" ? raw.status === "Healthy" : null,
+      healthy: !raw.status || raw.status === "Unknown" ? null : raw.status === "Healthy",
     });
   }
   return ok({

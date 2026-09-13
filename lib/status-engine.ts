@@ -6,6 +6,7 @@ import {
   isPrerelease,
   matchesReleaseTag,
   normalizeVersion,
+  requirementOnTrain,
   onTrain,
 } from "./semver-utils";
 import type {
@@ -52,7 +53,7 @@ export const STATUS_LABEL: Record<RepoStatusId, string> = {
   "rc-released": "RC released",
   compatible: "Compatible",
   migrating: "Migrating",
-  "not-started": "Not started",
+  "not-started": "No migration evidence",
   blocked: "Blocked",
   unknown: "Unknown",
 };
@@ -114,18 +115,22 @@ function toFindings(e: ComponentEvidence): DepFinding[] {
     if (detector.type === "github-release" || detector.type === "docs-snapshot" || detector.type === "migration-pr" || detector.type === "manual-override") continue;
     const targetTrain = depDetectorTrain(detector, e.releaseTargetVersion);
     if (result.ok) {
-      const normalized = result.value.raw !== null ? normalizeVersion(result.value.raw) : null;
+      const normalized = result.value.raw !== null ? normalizeVersion(result.value.resolvedVersion ?? result.value.raw) : null;
       findings.push({
         label: result.value.source,
         version: normalized,
         raw: result.value.raw,
+        resolution: result.value.resolution,
+        resolvedVersion: result.value.resolvedVersion,
+        resolutionUrl: result.value.resolutionUrl,
+        resolutionNote: result.value.resolutionNote,
         targetTrain,
         provesComponent:
           "provesComponent" in detector ? detector.provesComponent : undefined,
         // Absent (raw null) is definitively not on target; an unparseable
         // version string yields no judgement.
         onTarget:
-          result.value.raw === null ? false : normalized !== null && targetTrain !== null ? onTrain(normalized, targetTrain) : null,
+          result.value.raw === null ? false : result.value.resolution === "range" ? requirementOnTrain(result.value.raw, targetTrain, detector.type === "cargo-dep" || (detector.type === "submodule-dep" && detector.manifest === "cargo")) : normalized !== null && targetTrain !== null ? onTrain(normalized, targetTrain) : null,
         url: result.value.url,
       });
     } else {
@@ -159,7 +164,7 @@ function detectorSummary(d: Detector): string {
   }
 }
 
-function pickReleases(releases: GhRelease[], expected: string | null) {
+export function pickReleases(releases: GhRelease[], expected: string | null) {
   const sorted = [...releases].sort((a, b) => compareDesc(a.tagName, b.tagName));
   const latestStable = sorted.find((r) => !r.prerelease && !isPrerelease(r.tagName)) ?? null;
   const latestRc = sorted.find((r) => r.prerelease || isPrerelease(r.tagName)) ?? null;
@@ -318,11 +323,11 @@ export function deriveComponentStatus(e: ComponentEvidence): ComponentStatus {
     if (c.expectedVersion === null) return done("unknown", "Target release version is not yet confirmed");
     const prereleases = succeeded.filter((f) => f.version && isPrerelease(f.version));
     if (prereleases.length > 0) {
-      return done("prerelease-deps", `Dependencies still use prereleases: ${prereleases.map((f) => f.version).join(", ")}`);
+      return done("prerelease-deps", `Dependency evidence references prereleases: ${prereleases.map((f) => f.version).join(", ")}`);
     }
     return done(
       "compatible",
-      "All monitored dependencies use stable versions on their target trains",
+      "Monitored dependency declarations align with the target trains; runtime compatibility is not verified",
     );
   }
 
@@ -358,6 +363,7 @@ export function deriveEnvStatus(input: {
   statusUrl: string;
   snapshot: Result<EnvSnapshot>;
   expectedVersion: string;
+  serviceVersions?: Record<string, string | null>;
   manualOverride?: {
     status: EnvStatusId;
     version?: string;
@@ -399,7 +405,15 @@ export function deriveEnvStatus(input: {
   }
   const env = snapshot.value;
   const nodeVersion = env.nodeVersion ? normalizeVersion(env.nodeVersion) : null;
+  const services = env.services.map((service) => {
+    const prefix = Object.keys(input.serviceVersions ?? {}).sort((a, b) => b.length - a.length).find((key) => service.name.startsWith(key));
+    // Only node-owned services inherit the node train. Independently versioned
+    // services require an explicit per-release mapping.
+    const expected = prefix ? input.serviceVersions![prefix] : /^(RPC|Block Producer|Remote Prover)/.test(service.name) ? expectedVersion : null;
+    return { ...service, expectedVersion: expected, onTarget: expected && service.version ? onTrain(service.version, expected) : null };
+  });
   const base = {
+    services,
     id,
     label,
     manual: false as const,
@@ -411,6 +425,8 @@ export function deriveEnvStatus(input: {
   if (!nodeVersion) {
     return { ...base, status: "unknown", tone: "gray", reason: "No node version reported" };
   }
+  const failedHealth = services.filter((s) => s.healthy === false || s.probe === "unhealthy");
+  if (failedHealth.length) return { ...base, status: "partial", tone: "amber", reason: `${failedHealth.map((s) => s.name).join(", ")}: health or probe failed` };
   if (!onTrain(nodeVersion, expectedVersion)) {
     if (!beforeTrain(nodeVersion, expectedVersion)) {
       return {
@@ -427,19 +443,12 @@ export function deriveEnvStatus(input: {
       reason: `Node runs ${nodeVersion}, expected the ${expectedVersion} train`,
     };
   }
-  // Node is on the target train; check the other version-reporting services.
-  const offTrain = env.services.filter(
-    (s) => s.version !== null && !onTrain(s.version, expectedVersion),
-  );
-  if (offTrain.length > 0) {
-    return {
-      ...base,
-      status: "partial",
-      tone: ENV_TONE.partial,
-      reason: `Node on ${nodeVersion}; ${offTrain.map((s) => s.name).join(", ")} on an older train`,
-    };
-  }
-  return { ...base, status: "current", tone: ENV_TONE.current, reason: `All services on ${nodeVersion}` };
+  const offTrain = services.filter((s) => s.onTarget === false);
+  if (offTrain.length) return { ...base, status: "partial", tone: "amber",
+    reason: `${offTrain.map((s) => s.name).join(", ")}: version differs from its configured target` };
+  const unverified = services.filter((s) => s.healthy === null || s.probe === "unknown" || ((s.expectedVersion !== null || s.version !== null) && s.onTarget === null));
+  if (unverified.length) return { ...base, status: "unknown", tone: "gray", reason: `Node on ${nodeVersion}; verification incomplete for ${unverified.map((s) => s.name).join(", ")}` };
+  return { ...base, status: "current", tone: ENV_TONE.current, reason: `Node on ${nodeVersion}; monitored service versions and health checks align` };
 }
 
 /** Group roll-up (PRD section 9): red when any member is blocked, gray when

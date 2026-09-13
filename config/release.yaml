@@ -276,6 +276,10 @@ releases:
             channel: "0.15.0"
             component: ntx-builder
             targetTrain: "0.15"
+        distribution:
+          sourceBranch: next
+          publishedUrl: https://0xmiden.github.io/midenup/channel-manifest.json
+          channel: 0.15.0
 
       # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
       # or tags on these repos; version comes from manifests on main. NOTE:
@@ -646,6 +650,10 @@ releases:
             channel: "0.16.0"
             component: local-registry
             targetTrain: "0.29"
+        distribution:
+          sourceBranch: next
+          publishedUrl: https://0xmiden.github.io/midenup/channel-manifest.json
+          channel: 0.16.0
 
       # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
       # or tags on these repos; version comes from manifests on main. NOTE:
@@ -685,6 +693,33 @@ releases:
             provesComponent: web-sdk
           - type: migration-pr
             number: 22
+      - id: faucet
+        label: Faucet
+        repo: 0xMiden/faucet
+        branch: next
+        owner: Faucet team
+        expectedVersion: 0.16.0
+        group: app
+        dependsOn:
+          - rust-sdk
+          - node
+        detectors:
+          - type: github-release
+      - id: note-transport
+        label: Note Transport
+        repo: 0xMiden/note-transport-service
+        branch: main
+        owner: Note Transport team
+        expectedVersion: 0.5.0
+        group: app
+        dependsOn: []
+        detectors:
+          - type: github-release
+    serviceVersions:
+      RPC: "0.16"
+      Remote Prover: "0.16"
+      Faucet: "0.16"
+      Note Transport: "0.5"
 
   # ---- Next release train (drafts — expected versions to confirm as the
   # 0.17 plan firms up; branches already carry 0.17 work where noted). ----
@@ -721,9 +756,9 @@ releases:
         repo: 0xMiden/compiler
         branch: next
         owner: "Paul / Dennis"
-        expectedVersion: null # v17 compiler release version has not been confirmed
+        expectedVersion: 0.11.0 # planned in compiler #1388
         group: chain
-        dependsOn: [vm]
+        dependsOn: [vm, rust-sdk] # compiler #1388 waits for the client migration
         detectors:
           - type: github-release
             tagPrefixes: ["v", ""]
@@ -731,6 +766,8 @@ releases:
             dependency: miden-core
             provesComponent: vm
             targetTrain: "0.32"
+          - type: migration-pr
+            number: 1388
       - id: protocol
         label: "Protocol"
         repo: 0xMiden/protocol
@@ -754,6 +791,8 @@ releases:
           - type: cargo-dep
             dependency: miden-protocol
             provesComponent: protocol
+          - type: migration-pr
+            number: 2617
       - id: rust-sdk
         label: "Rust SDK"
         repo: 0xMiden/rust-sdk
@@ -771,6 +810,8 @@ releases:
             dependency: miden-debug
             provesComponent: debugger
             targetTrain: "0.15"
+          - type: migration-pr
+            number: 2530
       - id: web-sdk
         label: "Web SDK"
         repo: 0xMiden/web-sdk
@@ -918,12 +959,12 @@ releases:
             channel: "0.17.0"
             component: midenc
             provesComponent: compiler
-            targetTrain: null # compiler target unconfirmed
+            targetTrain: "0.11" # compiler #1388 target
           - type: midenup-channel
             channel: "0.17.0"
             component: cargo-miden
             provesComponent: compiler
-            targetTrain: null # compiler target unconfirmed
+            targetTrain: "0.11" # compiler #1388 target
           - type: midenup-channel
             channel: "0.17.0"
             component: protocol
@@ -963,6 +1004,10 @@ releases:
             channel: "0.17.0"
             component: local-registry
             targetTrain: "0.32"
+        distribution:
+          sourceBranch: next
+          publishedUrl: https://0xmiden.github.io/midenup/channel-manifest.json
+          channel: 0.17.0
 
       # ---- Walnut surfaces (rolled up into one stage in the UI). No releases
       # or tags on these repos; version comes from manifests on main. NOTE:
@@ -998,3 +1043,30 @@ releases:
             path: apps/web-verifier/package.json
             dependency: "@miden-sdk/miden-sdk"
             provesComponent: web-sdk
+      - id: faucet
+        label: Faucet
+        repo: 0xMiden/faucet
+        branch: next
+        owner: Faucet team
+        expectedVersion: 0.17.0
+        group: app
+        dependsOn:
+          - rust-sdk
+          - node
+        detectors:
+          - type: github-release
+      - id: note-transport
+        label: Note Transport
+        repo: 0xMiden/note-transport-service
+        branch: main
+        owner: Note Transport team
+        expectedVersion: null
+        group: app
+        dependsOn: []
+        detectors:
+          - type: github-release
+    serviceVersions:
+      RPC: "0.17"
+      Remote Prover: "0.17"
+      Faucet: "0.17"
+      Note Transport: null

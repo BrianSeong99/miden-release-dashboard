@@ -66,3 +66,20 @@ export function matchesReleaseTag(tag: string, prefixes?: string[]): boolean {
     tag.startsWith(prefix) && semver.valid(tag.slice(prefix.length)) !== null,
   );
 }
+
+/** Cargo interprets bare versions as caret requirements, unlike npm. */
+export function cargoRequirement(raw: string): string {
+  return raw.split(",").map((part) => /^\s*\d/.test(part) ? `^${part.trim()}` : part.trim()).join(" ");
+}
+
+/** A range spanning multiple trains cannot establish a single-train alignment. */
+export function requirementOnTrain(raw: string, train: string | null, cargo = false): boolean | null {
+  if (!train) return null;
+  const version = normalizeVersion(train);
+  const parsed = version && semver.parse(version);
+  const range = semver.validRange(cargo ? cargoRequirement(raw) : raw);
+  if (!parsed || !range) return null;
+  const target = `>=${parsed.major}.${parsed.minor}.0-0 <${parsed.major}.${parsed.minor + 1}.0-0`;
+  if (semver.subset(range, target, { includePrerelease: true })) return true;
+  return semver.intersects(range, target, { includePrerelease: true }) ? null : false;
+}

@@ -2,14 +2,15 @@
 
 import { useState } from "react";
 import { Download, ArrowRight } from "lucide-react";
-import type { ComponentStatus, GhRelease, PropagationTiming } from "@/lib/types";
+import type { BlockerView, ComponentStatus, GhRelease, PropagationTiming } from "@/lib/types";
 import { derivePropagation } from "@/lib/release-timing";
 import { formatElapsed } from "@/lib/time-format";
 import { useHydratedClock } from "@/lib/use-hydrated-clock";
 import { cn } from "@/lib/utils";
 import { ReleaseDate } from "./release-date";
 import { StatusBadge } from "./status-badge";
-import { timingCsv } from "@/lib/timing-csv";
+import { workTiming } from "@/lib/work-timing";
+import { cell, timingCsv } from "@/lib/timing-csv";
 import { isPrerelease } from "@/lib/semver-utils";
 
 const linkClass = "rounded-sm font-medium hover:text-brand hover:underline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand";
@@ -83,31 +84,45 @@ function Gap({ edge }: { edge: PropagationTiming }) {
   return <span className="text-muted-foreground">{{ "upstream-pending": "Awaiting upstream stable", "not-monitored": "Release dates not tracked", unknown: "Insufficient date evidence" }[edge.state]}</span>;
 }
 
-export function ReleaseTimingPanel({ components, generatedAt, releaseVersion }: {
-  components: ComponentStatus[]; generatedAt: string; releaseVersion: string;
+export function ReleaseTimingPanel({ components, generatedAt, releaseVersion, work = [] }: {
+  components: ComponentStatus[]; generatedAt: string; releaseVersion: string; work?: BlockerView[];
 }) {
-  const [view, setView] = useState<"components" | "dependencies">("components");
+  const [view, setView] = useState<"components" | "dependencies" | "workflow">("components");
   const now = useHydratedClock(generatedAt);
   const edges = derivePropagation(components, generatedAt);
   const measured = edges.filter((e) => e.state === "released");
   const waiting = edges.filter((e) => e.state === "waiting");
   const earlier = edges.filter((e) => e.state === "downstream-first");
   const unavailable = edges.length - measured.length - waiting.length - earlier.length;
-  const csv = timingCsv(components, edges, releaseVersion, generatedAt, view);
+  const tracked = work.filter((item) => item.kind === "pull-request");
+  const csv = view === "workflow" ? [
+    ["release", "observed_at_utc", "component", "PR", "state", "opened_at_utc", "ready_at_utc", "merged_at_utc", "preparation_hours", "review_to_merge_hours", "open_wait_hours", "total_to_merge_hours", "evidence"],
+    ...tracked.map((item) => { const t = workTiming(item, generatedAt); return [releaseVersion, generatedAt, item.stage, item.title, item.live.state, item.workflow?.openedAt, item.workflow?.readyAt, item.workflow?.mergedAt,
+      ...[t.preparationMs, t.reviewMs, t.openWaitMs, t.totalToMergeMs].map((ms) => ms === null ? null : ms / 3_600_000), item.url]; }),
+  ].map((row) => row.map(cell).join(",")).join("\r\n") + "\r\n" : timingCsv(components, edges, releaseVersion, generatedAt, view);
 
   return <div className="flex min-w-0 flex-col gap-5">
     <p className="max-w-4xl text-sm leading-6 text-muted-foreground">Compare release dates across version trains to establish a baseline for the release flow. Dependency gaps run from upstream’s first stable release to downstream’s first stable release. These are publication intervals; dependency adoption and engineering effort require separate evidence.</p>
     <div className="flex flex-wrap items-center justify-between gap-3">
       <div role="group" aria-label="Timing view" className="flex rounded-full bg-muted p-1">
-        {(["components", "dependencies"] as const).map((key) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)} className={cn("cursor-pointer rounded-full px-4 py-2.5 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand", view === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
-          {key === "components" ? "Component dates" : "Dependency gaps"}
+        {(["components", "dependencies", "workflow"] as const).map((key) => <button key={key} type="button" aria-pressed={view === key} onClick={() => setView(key)} className={cn("cursor-pointer rounded-full px-4 py-2.5 text-xs font-medium focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand", view === key ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:text-foreground")}>
+          {key === "components" ? "Component dates" : key === "dependencies" ? "Dependency gaps" : "Migration flow"}
         </button>)}
       </div>
       <a download={`miden-${releaseVersion}-${view}-timing.csv`} href={`data:text/csv;charset=utf-8,${encodeURIComponent(csv)}`} className="inline-flex min-h-10 items-center gap-2 rounded-full bg-muted px-4 py-2.5 text-xs font-medium hover:bg-border focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-brand">
         <Download aria-hidden className="size-3.5" /> Export CSV
       </a>
     </div>
-    {view === "components" ? <ComponentTimes components={components} now={now} /> : <>
+    {view === "workflow" ? <div role="region" aria-label="Migration flow timing" tabIndex={0} className="max-h-[560px] overflow-auto rounded-[24px] bg-muted">
+      <p className="p-4 text-xs text-muted-foreground">Tracked PR history, including merged work for measurement. Ready-for-review dates require an explicit GitHub event. Release and deployment are separate evidence; PR merge alone does not prove either.</p>
+      <table className="w-full min-w-[1000px] text-left text-[13px] leading-5"><thead><tr>{["Component / PR", "Opened", "Ready for review", "Merged", "Time to review", "Review to merge", "Open wait"].map((label) => <th key={label} className={cellClass}>{label}</th>)}</tr></thead>
+      <tbody>{tracked.map((item) => { const t = workTiming(item, generatedAt); return <tr key={item.id} className="border-t border-card">
+        <th scope="row" className={cn(cellClass, "max-w-64 font-normal")}><div className="text-xs text-muted-foreground">{components.find((c) => c.id === item.stage)?.label ?? item.stage} · {item.live.state}</div><a href={item.url} target="_blank" rel="noreferrer" className={linkClass}>{item.title}</a></th>
+        {[item.workflow?.openedAt, item.workflow?.readyAt, item.workflow?.mergedAt].map((at, index) => <td key={index} className={cellClass}>{at ? <ReleaseDate publishedAt={at} compact showAge={false} /> : "Not evidenced"}</td>)}
+        {[t.preparationMs, t.reviewMs, t.openWaitMs].map((ms, index) => <td key={index} className={cellClass}>{ms === null ? "—" : formatElapsed(ms)}</td>)}
+      </tr>; })}</tbody></table>
+      {tracked.length === 0 && <p className="p-4 text-sm text-muted-foreground">No tracked PR evidence for this release.</p>}
+    </div> : view === "components" ? <ComponentTimes components={components} now={now} /> : <>
       <p className="text-xs leading-5 text-muted-foreground">{measured.length} measured gaps · {waiting.length} awaiting downstream · {earlier.length} downstream first · {unavailable} without a comparable pair. Open waits are measured at the last refresh.</p>
       <div role="region" aria-label="Dependency release gaps" tabIndex={0} className="max-h-[560px] overflow-auto rounded-[24px] bg-muted focus-visible:outline-2 focus-visible:outline-brand">
         <table className="w-full min-w-[900px] text-left text-[13px] leading-5">

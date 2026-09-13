@@ -1,4 +1,4 @@
-import { isOpenWork } from "./release-work";
+import { isOpenWork, nextWorkAction } from "./release-work";
 import { STATUS_LABEL } from "./status-engine";
 import type { BlockerView, ComponentStatus, Tone } from "./types";
 
@@ -15,6 +15,9 @@ export interface WorkRow {
   status: string;
   tone: Tone;
   active: boolean;
+  nextAction: string;
+  waitingOn: string | null;
+  blocksOutcome: string | null;
   date: string | null;
   dateLabel: "Released" | "Latest deployment" | "Decision date";
   url: string;
@@ -27,7 +30,7 @@ export interface WorkTableOptions {
   group: string;
   type: "all" | WorkRow["kind"];
   query: string;
-  sort: "title" | "group" | "component" | "owner" | "status" | "date";
+  sort: "title" | "group" | "component" | "owner" | "status" | "date" | "nextAction";
   direction: "asc" | "desc";
 }
 
@@ -61,6 +64,13 @@ export function buildWorkRows(components: readonly ComponentStatus[], work: read
       id: `component-${component.id}`, kind: "component", title: component.label,
       group, groupLabel: GROUP_LABEL[group] ?? "Other", componentId: component.id, componentLabel: component.label,
       owner: component.owner?.trim() || null, ownerLabel: "Owner", status: STATUS_LABEL[component.status], tone: component.tone,
+      nextAction: component.distribution?.state === "pending" ? "Publish the updated channel"
+        : component.distribution?.state === "unknown" ? "Verify channel publication"
+        : component.status === "snapshot-created" ? "Publish the docs snapshot"
+        : component.status === "awaiting-snapshot" ? "Create the versioned docs snapshot"
+        : component.status === "unknown" ? "Confirm missing evidence"
+        : READY_COMPONENTS.has(component.status) ? "—" : "Inspect migration and release evidence",
+      waitingOn: null, blocksOutcome: null,
       active: !READY_COMPONENTS.has(component.status), date: validDate(component.matchedPublishedAt),
       dateLabel: component.id === "docs" || component.docsSnapshot !== undefined || component.status === "docs-published" ? "Latest deployment" : "Released",
       url: `https://github.com/${component.repo}`, component,
@@ -75,6 +85,9 @@ export function buildWorkRows(components: readonly ComponentStatus[], work: read
       id: `work-${item.id}`, kind: item.category ?? "follow-up", title: item.title,
       group, groupLabel: GROUP_LABEL[group] ?? "Other", componentId: item.stage, componentLabel: component?.label ?? item.stage,
       owner: item.owner?.trim() || null, ownerLabel: "Assignee", status, tone: WORK_TONE[item.live.state], active: isOpenWork(item),
+      nextAction: nextWorkAction(item),
+      waitingOn: item.handoff?.waitingOn ?? (item.workflow?.reviewers.join(", ") || null),
+      blocksOutcome: item.handoff?.blocksOutcome ?? item.blockingDependency ?? null,
       date: validDate(item.nextDecisionDate), dateLabel: "Decision date", url: item.url, component, work: item,
     };
   });
@@ -85,7 +98,7 @@ function searchableText(row: WorkRow): string {
   const component = row.component;
   return [
     row.title, row.componentLabel, row.componentId, row.groupLabel, row.owner, row.status, row.kind,
-    row.work?.exitCondition, row.work?.blockingDependency,
+    row.nextAction, row.waitingOn, row.blocksOutcome, row.work?.exitCondition, row.work?.blockingDependency,
     component?.expectedVersion, component?.matchedRelease, component?.latestStable, component?.latestRc,
     ...(component?.dependsOn ?? []),
     ...(component?.deps.flatMap((dep) => [dep.label, dep.version, dep.raw]) ?? []),
@@ -122,7 +135,7 @@ export function filterAndSortWorkRows(rows: readonly WorkRow[], options: WorkTab
         : options.sort === "date" ? Date.parse(aValue) - Date.parse(bValue) : collator.compare(aValue, bValue);
     } else if (options.sort === "status") comparison = statusPriority(a) - statusPriority(b);
     else {
-      const field = options.sort === "group" ? "groupLabel" : options.sort === "component" ? "componentLabel" : "title";
+      const field = options.sort === "group" ? "groupLabel" : options.sort === "component" ? "componentLabel" : options.sort === "nextAction" ? "nextAction" : "title";
       comparison = collator.compare(a[field], b[field]);
     }
     return comparison * direction || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);

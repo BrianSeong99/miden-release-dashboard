@@ -2,15 +2,17 @@ import { unstable_cache } from "next/cache";
 import { loadConfig } from "./config";
 import { fetchEnvSnapshot } from "./environments";
 import { getDocsSnapshot, type DocsSnapshot } from "./docs-snapshot";
-import { err } from "./fetch-utils";
-import { getIssueState, listReleaseHistory } from "./github";
+import { err, ok } from "./fetch-utils";
+import { getIssueState, listReleaseHistory, getRawFile, blobUrl, resolveReleaseRef, getWorkEvidence } from "./github";
+import { compareDistribution, fetchPublicManifest } from "./distribution";
 import { runDepDetector } from "./manifests";
 import type { BlockerConfig, Detector } from "./schema";
-import { compareDesc } from "./semver-utils";
+import { compareDesc, matchesReleaseTag } from "./semver-utils";
 import { isCriticalReleaseBlocker } from "./release-work";
 import { deriveReleaseTiming } from "./release-timing";
 import {
   deriveComponentStatus,
+  pickReleases,
   deriveGroupRollup,
   deriveEnvStatus,
   deriveReadiness,
@@ -77,6 +79,14 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
     return request;
   };
 
+  const rawRequests = new Map<string, Promise<Result<string>>>();
+  const readRaw: typeof getRawFile = (repo, path, ref) => {
+    const key = `${repo}@${ref}:${path}`;
+    let request = rawRequests.get(key);
+    if (!request) { request = getRawFile(repo, path, ref); rawRequests.set(key, request); }
+    return request;
+  };
+
   // Migration PRs are inspectable work even when no one curated a separate
   // row. An open migration is not, by itself, a confirmed release gate.
   const releaseWork: BlockerConfig[] = [...releaseBlockers];
@@ -106,8 +116,12 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
   const blockerViews: BlockerView[] = await Promise.all(
     releaseWork.map(async (b): Promise<BlockerView> => {
       const live = await getLiveIssue(b.github.repo, b.github.number);
+      const workflow = live.ok && live.value.isPr ? await getWorkEvidence(b.github.repo, b.github.number) : null;
       return {
         id: b.id,
+        gateScope: b.gateScope,
+        handoff: b.handoff,
+        workflow: workflow?.ok ? workflow.value : undefined,
         category: b.category,
         kind: live.ok ? live.value.isPr ? "pull-request" : "issue" : "unknown",
         title: live.ok ? live.value.title : b.title,
@@ -143,12 +157,23 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
       const wantsReleases = c.detectors.some((d) => d.type === "github-release");
       const migrationPrs = c.detectors.filter((d) => d.type === "migration-pr");
       const docsDetector = c.detectors.find((d) => d.type === "docs-snapshot");
-      const [releaseHistory, depFindings, migrationPrOpen, docsSnapshot] = await Promise.all([
-        wantsReleases ? getReleaseHistory(c.repo) : Promise.resolve(null),
+      const releaseHistory = wantsReleases ? await getReleaseHistory(c.repo) : null;
+      const releaseDetector = c.detectors.find((d) => d.type === "github-release");
+      const info = releaseHistory?.ok ? pickReleases(releaseHistory.value.releases.filter((r) => matchesReleaseTag(r.tagName, releaseDetector?.tagPrefixes)), c.expectedVersion) : null;
+      const matched = info?.stableMatch ?? info?.rcOnTrain;
+      const depDetectors = c.detectors.filter(isDepDetector);
+      const ref = matched && depDetectors.length ? await resolveReleaseRef(c.repo, matched.tagName) : ok(c.branch);
+      const publicManifest = c.distribution ? await fetchPublicManifest(c.distribution.publishedUrl) : null;
+      const distribution = c.distribution && publicManifest ? compareDistribution(
+        await readRaw(c.repo, "manifest/channel-manifest.json", c.distribution.sourceBranch), publicManifest,
+        c.distribution.channel, blobUrl(c.repo, c.distribution.sourceBranch, "manifest/channel-manifest.json"), c.distribution.publishedUrl) : undefined;
+      const [depFindings, migrationPrOpen, docsSnapshot] = await Promise.all([
         Promise.all(
-          c.detectors.filter(isDepDetector).map(async (detector) => ({
+          depDetectors.map(async (detector) => ({
             detector: detector as Detector,
-            result: await runDepDetector(c.repo, c.branch, detector),
+            result: !ref.ok ? err<DetectedVersion>(ref.error) : await runDepDetector(c.repo, ref.value, detector,
+              c.distribution && detector.type === "midenup-channel" ? async () => publicManifest ?? err("Published manifest unavailable") : readRaw).then((result) =>
+                result.ok && c.distribution && detector.type === "midenup-channel" ? ok({ ...result.value, url: c.distribution.publishedUrl }) : result),
           })),
         ),
         migrationPrs.length > 0
@@ -173,6 +198,16 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
         blockers: blockersByStage.get(c.id) ?? [],
         releaseTargetVersion: release.targetVersion,
       });
+      component.verification = c.verification;
+      if (distribution) {
+        component.distribution = distribution;
+        if (component.status !== "blocked" && !component.manual) {
+          if (distribution.state === "pending") { component.status = "migrating"; component.tone = "amber"; component.reason = distribution.reason; }
+          if (distribution.state === "unknown") { component.status = "unknown"; component.tone = "gray"; component.reason = distribution.reason; }
+        }
+      }
+      if (c.distribution) component.dependencyRef = { kind: "distribution", ref: c.distribution.channel, url: c.distribution.publishedUrl };
+      else if (ref.ok && depDetectors.length) component.dependencyRef = { kind: matched ? "release" : "development", ref: matched?.tagName ?? c.branch, url: `https://github.com/${c.repo}/tree/${encodeURIComponent(ref.value)}` };
       return { ...component, releaseTiming: deriveReleaseTiming(c, releaseHistory, docsSnapshot, generatedAt) };
     }),
   );
@@ -189,6 +224,7 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
         snapshot,
         expectedVersion: expected?.expectedVersion ?? release.targetVersion,
         manualOverride: e.manualOverride,
+        serviceVersions: release.serviceVersions,
       });
     }),
   );
@@ -199,7 +235,7 @@ export async function buildSnapshot(releaseVersion?: string): Promise<DashboardS
   const byId = new Map(components.map((c) => [c.id, c]));
   for (const c of components) {
     for (const f of c.deps) {
-      if (!f.provesComponent || f.onTarget !== true || !f.version) continue;
+      if (f.resolution === "range" || !f.provesComponent || f.onTarget !== true || !f.version) continue;
       const upstream = byId.get(f.provesComponent);
       const newest = upstream?.matchedRelease ?? upstream?.latestRc ?? upstream?.latestStable;
       if (newest && compareDesc(f.version, newest) > 0) f.staleBehind = newest;

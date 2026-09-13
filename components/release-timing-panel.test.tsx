@@ -51,3 +51,11 @@ describe("ReleaseTimingPanel", () => {
     expect(dated.replace(/<!--.*?-->/g, "")).toContain("6d 0h ago");
   });
 });
+
+it("shows merged migration evidence only in the timing view, with exportable gaps", () => {
+  const work = [{id:"m",title:"Adopt protocol",kind:"pull-request",stage:"protocol",category:"migration",severity:"medium",owner:null,exitCondition:"Merge",nextDecisionDate:null,url:"https://github.com/o/r/pull/1",live:{state:"merged",checkedAt:at},workflow:{draft:false,reviewers:[],checks:"passing",openedAt:"2026-09-09T00:00:00Z",readyAt:"2026-09-10T00:00:00Z",mergedAt:"2026-09-11T00:00:00Z"}}] as import("@/lib/types").BlockerView[];
+  render(<ReleaseTimingPanel components={[component("Protocol")]} work={work} generatedAt={at} releaseVersion="0.16" />);
+  fireEvent.click(screen.getByRole("button",{name:"Migration flow"}));
+  expect(screen.getByRole("region",{name:"Migration flow timing"})).toHaveTextContent("Adopt protocol");
+  expect(screen.getByRole("link",{name:/Export CSV/}).getAttribute("href")).toContain("review_to_merge_hours");
+});

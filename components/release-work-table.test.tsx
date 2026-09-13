@@ -142,3 +142,17 @@ describe("ReleaseWorkTable", () => {
     expect(screen.queryByRole("button", { name: "Show all work" })).not.toBeInTheDocument();
   });
 });
+
+it("searches and sorts next actions while keeping reviewers separate from assignees", () => {
+  const waiting = workItem("review", {owner:"implementer", workflow:{draft:false,reviewers:["reviewer"],checks:"passing",openedAt:at,readyAt:null,mergedAt:null}});
+  render(<ReleaseWorkTable components={components} work={[waiting]} generatedAt={at} />);
+  expect(row("work-review")).toHaveTextContent("Review requested");
+  expect(row("work-review")).toHaveTextContent("Waiting on reviewer");
+  expect(row("work-review")).toHaveTextContent("implementer");
+  fireEvent.change(screen.getByRole("searchbox"),{target:{value:"reviewer"}});
+  expect(rowIds()).toEqual(["work-row-work-review"]);
+  fireEvent.click(screen.getByRole("button",{name:"Sort by Next action"}));
+  expect(screen.getByRole("columnheader",{name:/Next action/})).toHaveAttribute("aria-sort","ascending");
+  fireEvent.click(screen.getByRole("button",{name:"Show details for Refresh docs"}));
+  expect(screen.getByText("Migration milestones")).toBeInTheDocument();
+});

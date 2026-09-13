@@ -72,6 +72,35 @@ export interface IssueLiveState {
   title: string;
   htmlUrl: string;
   assignees: string[];
+  workflow?: WorkEvidence;
+}
+
+export interface WorkEvidence {
+  draft: boolean;
+  reviewers: string[];
+  checks: "passing" | "failing" | "pending" | "unknown";
+  openedAt: string | null;
+  readyAt: string | null;
+  mergedAt: string | null;
+  error?: string;
+}
+
+export interface Handoff {
+  nextAction: string;
+  waitingOn: string | null;
+  blocksOutcome: string;
+  confirmedBy: string;
+  confirmedAt: string;
+  evidenceUrl: string;
+}
+
+export interface DistributionEvidence {
+  state: "published" | "pending" | "unknown";
+  reason: string;
+  sourceUrl: string;
+  publishedUrl: string;
+  channel: string;
+  changes: string[];
 }
 
 /** A version a detector extracted, with provenance for the evidence link. */
@@ -80,6 +109,10 @@ export interface DetectedVersion {
    * null means the manifest was fetched but the dependency/key/channel is
    * ABSENT — positive evidence of "not started" (PRD section 6). */
   raw: string | null;
+  resolution?: "locked" | "exact" | "range";
+  resolvedVersion?: string | null;
+  resolutionUrl?: string;
+  resolutionNote?: string;
   /** Where it came from, e.g. "Cargo.toml → miden-core". */
   source: string;
   /** Browsable evidence URL (blob on the monitored branch). */
@@ -90,6 +123,10 @@ export interface EnvService {
   name: string;
   version: string | null;
   healthy: boolean | null;
+  probe?: "healthy" | "unhealthy" | "unknown";
+  probeError?: string;
+  expectedVersion?: string | null;
+  onTarget?: boolean | null;
 }
 
 export interface EnvSnapshot {
@@ -110,6 +147,10 @@ export interface DepFinding {
   /** Normalized version, null when the detector failed. */
   version: string | null;
   raw: string | null;
+  resolution?: "locked" | "exact" | "range";
+  resolvedVersion?: string | null;
+  resolutionUrl?: string;
+  resolutionNote?: string;
   /** Train the finding is compared against, e.g. "0.16". */
   targetTrain: string | null;
   /** null = detector failed, so no judgement. */
@@ -146,6 +187,9 @@ export interface ComponentStatus {
   matchedPublishedAt: string | null;
   /** Optional while old static snapshots may still be cached by an open tab. */
   releaseTiming?: ReleaseTiming;
+  dependencyRef?: { kind: "release" | "development" | "distribution"; ref: string; url: string };
+  distribution?: DistributionEvidence;
+  verification?: { status: "passed" | "failed"; version: string; environment: string; observedAt: string; confirmedBy: string; evidenceUrl: string };
   /** Versioned docs evidence; null means lookup failed, absent means not monitored. */
   docsSnapshot?: DocsSnapshot | null;
   deps: DepFinding[];
@@ -166,6 +210,7 @@ export interface EnvStatusResult {
   lastUpdated: string | null;
   checkedAt: string;
   statusUrl: string;
+  services?: EnvService[];
   error?: string;
 }
 
@@ -196,6 +241,9 @@ export interface BlockerView {
   nextDecisionDate: string | null;
   url: string;
   notionUrl?: string;
+  gateScope?: "release" | "outcome";
+  handoff?: Handoff;
+  workflow?: WorkEvidence;
   live:
     | { state: "open" | "merged" | "closed"; checkedAt: string }
     | { state: "unknown"; error: string; checkedAt: string };
