@@ -33,11 +33,11 @@ evidence. Select it again to restore all connections. Lane labels remain visible
 One table includes every configured component, including DevEx and Walnut surfaces, alongside
 open blockers, follow-ups and migration PRs. **All** shows components and open or unverified work;
 **Actions** shows unfinished components and that work; **Components** shows component rows.
-Merged and closed work is omitted from every view and count. A component remains visible even when
+Merged and closed work is omitted from every work-table view and count. It remains available in the timing history. A component remains visible even when
 it has no open tracked work. Each issue or PR has a visible GitHub URL directly in its row.
 
 Combine the group and type filters with search across work, components, owners, versions and
-dependency checks. Sort by work item, group, component, state, owner/assignee or date. State sorts
+dependency checks. Sort by work item, group, component, state, next action, owner/assignee or date. State sorts
 by attention priority; missing owners and dates remain last in either direction. Clear filters
 restores all rows when a combination has no matches.
 
@@ -110,18 +110,56 @@ release timing: a current dependency pin alone cannot tell us when adoption happ
 
 Compiler and debugger releases have independent version lines. The v0.16 view tracks
 compiler 0.10 and debugger 0.10 against VM 0.29; the v0.17 view tracks debugger 0.15
-against VM 0.32. The v0.17 compiler target remains TBD until confirmed. GitHub release
+against VM 0.32. Compiler PR #1388 plans compiler 0.11 for v0.17 and is tracked as an active migration. GitHub release
 tag prefixes distinguish these products from SDK/template and debugger subcrate releases.
 
 The graph includes debugger → Rust SDK as a release dependency. In v0.16, compiler
-also depends on protocol and debugger; v0.17 places compiler and debugger directly
-after VM, following the planned release topology. Monitored Cargo pins still expose
+also depends on protocol and debugger; the v0.17 compiler migration additionally waits
+for Rust SDK, as recorded in compiler #1388. Debugger follows VM. Monitored Cargo pins still expose
 whether the source has migrated to that topology.
 
 midenup is a separate toolchain node, with per-channel compiler, debugger, VM, protocol,
 SDK/client, node and supporting-tool pins. Each pin is checked against its own expected
 version line. An absent channel cannot be ready, and alpha/RC pins remain amber.
 These checks describe the configured distribution; they do not run tool installation tests.
+
+## Source, publication and handoffs
+
+Released dependency checks read the matched release tag's resolved commit, including its Cargo.lock.
+Unreleased components use the configured development branch. Each component identifies that source.
+A declared range is displayed separately from a uniquely resolved registry version; only lock evidence
+or an exact declaration can trigger a patch/RC lag warning. Ambiguous, substituted or missing lock
+entries do not prove the installed version. Dependency alignment does not prove runtime usability.
+
+midenup checks the public downloadable manifest and compares the selected channel with `next`, including
+network aliases relevant to that channel. A source update does not establish publication. Unrelated
+channel edits do not affect the selected view; malformed or unreachable manifests remain unknown.
+
+Environment cards expand to show each service's version, health and available probe result. Release
+`serviceVersions` explicitly maps independently versioned services such as Note Transport. Unknown
+pairings and unknown probes remain visible; a healthy endpoint does not imply a successful proving test.
+Faucet and Note Transport also have component rows with their independent publication dates.
+
+The work table includes **Next action**, requested reviewers/waiting parties, and the affected outcome.
+GitHub provides draft status, current-head checks and requested reviewers; it never substitutes a
+reviewer for the assignee. A manually confirmed `handoff` includes the action, waiting party, outcome,
+confirmer, confirmation timestamp and evidence URL. `gateScope: outcome` limits a confirmed blocker to
+its named outcome without making the whole release red. Use `gateScope: release` only for an explicit
+release gate; omitted scope preserves the existing release-gate behavior.
+
+**Migration flow** in Release timing reconstructs PR opened, ready-for-review and merged dates,
+plus calendar preparation/review intervals and open waits. It includes completed tracked PRs for
+measurement while keeping them out of the work queue. Ready dates require a GitHub timeline event;
+truncated histories remain unknown. CSV exports preserve these dates and gaps. Merge alone is not
+proof that a release contains the change or that it was deployed. No synthetic adoption date is inferred.
+
+Optional component `verification` records a specific version/environment test result with observed UTC
+time, confirmer and evidence. It is visibly manual and separate from publication status. Without such
+evidence, usage verification reads **Not recorded**. Service probes remain automated observations.
+
+Selected meeting notes or Slack threads can be translated into these YAML fields using existing
+connectors. Keep private notes and private source links outside this public repository; corroborate
+published changes with public evidence. Validate every config diff with `npm run validate-config`.
 
 ## Develop
 

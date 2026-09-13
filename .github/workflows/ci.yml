@@ -20,6 +20,5 @@ jobs:
       - run: npm run test:coverage
       - run: npm run build
         env:
-          # Optional: raises rate limits for the prebuild config check only;
-          # the build itself makes no GitHub calls.
+          # Raises rate limits for the live snapshot rendered during the build.
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

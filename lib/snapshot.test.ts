@@ -20,6 +20,8 @@ function route(url: string): { body: string; status: number } {
   const u = new URL(url);
   if (u.hostname.startsWith("status.testnet")) return { body: fixture("env-status-testnet.json"), status: 200 };
   if (u.hostname.startsWith("status.devnet")) return { body: fixture("env-status-devnet.json"), status: 200 };
+  if (/\/commits\/[^/]+$/.test(u.pathname)) return { body: JSON.stringify({ sha: "b".repeat(40) }), status: 200 };
+  if (u.hostname === "0xmiden.github.io") return { body: fixture("midenup-channel-manifest.json"), status: 200 };
   if (u.pathname.endsWith("/releases")) return { body: fixture("releases-protocol.json"), status: 200 };
   if (u.pathname === "/repos/0xMiden/docs/actions/workflows/deploy-docs.yml/runs") {
     return { body: JSON.stringify({ total_count: 1, workflow_runs: [{
@@ -96,6 +98,32 @@ afterEach(() => {
 });
 
 describe("buildSnapshot", () => {
+  it("reads released dependencies from the release commit, never a newer development branch", async () => {
+    const fetch = vi.fn(async (url: string) => {
+      const u = new URL(url);
+      if (u.pathname === "/repos/0xMiden/node/releases") return new Response(JSON.stringify([{ tag_name: "v0.16.0", prerelease: false, draft: false, published_at: "2026-09-10T00:00:00Z", html_url: "https://github.com/0xMiden/node/releases/tag/v0.16.0" }]));
+      if (u.pathname === "/repos/0xMiden/node/contents/Cargo.toml") return new Response(`[dependencies]\nmiden-protocol = "${u.searchParams.get("ref") === "b".repeat(40) ? "0.16" : "0.17.0-rc.3"}"`);
+      if (u.pathname === "/repos/0xMiden/node/contents/Cargo.lock") return new Response('[[package]]\nname="miden-protocol"\nversion="0.16.1"\nsource="registry+https://github.com/rust-lang/crates.io-index"');
+      const {body,status} = route(url); return new Response(body,{status});
+    });
+    vi.stubGlobal("fetch",fetch);
+    const snap = await buildSnapshot("0.16");
+    const node = snap.components.find((c) => c.id === "node")!;
+    expect(node.dependencyRef).toMatchObject({kind:"release",ref:"v0.16.0"});
+    expect(node.deps[0]).toMatchObject({raw:"0.16",resolvedVersion:"0.16.1",resolution:"locked"});
+    expect(fetch.mock.calls.filter(([url]) => url.includes("/node/contents/")).every(([url]) => new URL(url).searchParams.get("ref") === "b".repeat(40))).toBe(true);
+  });
+
+  it("does not fall back to the development branch when a release ref cannot be resolved", async () => {
+    vi.stubGlobal("fetch",async (url: string) => {
+      if (url.includes("/node/commits/")) return new Response("offline",{status:503});
+      const {body,status} = route(url); return new Response(body,{status});
+    });
+    const node = (await buildSnapshot("0.16")).components.find((c) => c.id === "node")!;
+    expect(node.deps.every((d) => d.onTarget === null && d.error)).toBe(true);
+    expect(node.dependencyRef).toBeUndefined();
+  });
+
   it("assembles the full dashboard from live-shaped payloads", async () => {
     vi.stubGlobal(
       "fetch",
@@ -138,9 +166,9 @@ describe("buildSnapshot", () => {
     // RC-skew: node pins protocol rc.4 while protocol's matched RC is rc.7.
     const nodeDep = byId.get("node")?.deps.find((d) => d.provesComponent === "protocol");
     expect(nodeDep?.staleBehind).toBe("0.16.0-rc.7");
-    // Environments: devnet on the 0.16 train, testnet behind (recorded payloads).
+    // Recorded fixtures: missing Faucet version is unverified; failed testnet probe is partial.
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
-    expect(envs).toEqual({ devnet: "current", testnet: "behind" });
+    expect(envs).toEqual({ devnet: "unknown", testnet: "partial" });
     expect(snap.readiness.level).not.toBe("blocked");
     expect(snap.readiness.criticalBlockerCount).toBe(0);
   });
@@ -264,7 +292,7 @@ describe("buildSnapshot", () => {
     const envs = Object.fromEntries(snap.environments.map((e) => [e.id, e.status]));
     // Recorded payloads: testnet runs 0.15.0 (current for this view), devnet
     // runs 0.16.0-rc.3 (a newer train -> ahead, not "behind").
-    expect(envs).toEqual({ devnet: "ahead", testnet: "current" });
+    expect(envs).toEqual({ devnet: "ahead", testnet: "partial" });
   });
 
   it("degrades every failed source to Unknown without breaking the page", async () => {

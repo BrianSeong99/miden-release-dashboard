@@ -12,7 +12,7 @@ import { ReleaseDate } from "./release-date";
 import { StatusBadge } from "./status-badge";
 
 type View = "all" | "actions" | "components";
-type Sort = "title" | "group" | "component" | "owner" | "status" | "date";
+type Sort = "title" | "group" | "component" | "owner" | "status" | "date" | "nextAction";
 const views: { value: View; label: string }[] = [
   { value: "all", label: "All" }, { value: "actions", label: "Actions" },
   { value: "components", label: "Components" },
@@ -47,6 +47,17 @@ function RowDetails({ row, now }: { row: WorkRow; now: number }) {
     {row.work && <div className="flex min-w-0 flex-col gap-4 rounded-[24px] bg-muted p-5">
       <div className="flex flex-wrap items-center gap-2"><h3 className="font-semibold">Work details</h3><ManualBadge note="Classification, scope and exit criterion are curated. Title, assignee and state refresh from GitHub." /></div>
       <dl className="grid gap-4 text-sm">
+        <div><dt className="text-xs text-muted-foreground">Next action</dt><dd className="mt-1">{row.nextAction}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Waiting on</dt><dd className="mt-1">{row.waitingOn ?? "Not confirmed"}</dd></div>
+        <div><dt className="text-xs text-muted-foreground">Blocks outcome</dt><dd className="mt-1">{row.blocksOutcome ?? "Not confirmed"}{row.work.gateScope === "outcome" ? " · Does not gate the whole release" : ""}</dd></div>
+        {row.work.handoff && <div className="text-xs text-muted-foreground">Manual handoff confirmed by {row.work.handoff.confirmedBy} on <ReleaseDate publishedAt={row.work.handoff.confirmedAt} showAge={false} compact /> · <a href={row.work.handoff.evidenceUrl} target="_blank" rel="noreferrer" className={linkClass}>Evidence</a></div>}
+        {row.work.workflow && <>
+          <div><dt className="text-xs text-muted-foreground">PR checks</dt><dd className="mt-1">{row.work.workflow.checks}{row.work.workflow.draft ? " · Draft" : ""}</dd></div>
+          <div><dt className="text-xs text-muted-foreground">Migration milestones</dt><dd className="mt-1 flex flex-col gap-2">
+            {([["Opened", row.work.workflow.openedAt], ["Ready for review", row.work.workflow.readyAt], ["Merged", row.work.workflow.mergedAt]] as const).map(([label, date]) => <span key={label}>{label}: {date ? <ReleaseDate publishedAt={date} now={now} /> : "Not evidenced"}</span>)}
+            <span className="text-xs text-muted-foreground">Calendar time between recorded events; not engineering effort or proof of deployment.</span>
+          </dd></div>
+        </>}
         <div><dt className="text-xs text-muted-foreground">Exit criterion</dt><dd className="mt-1 break-words">{row.work.exitCondition}</dd></div>
         {row.work.blockingDependency && <div><dt className="text-xs text-muted-foreground">Scope</dt><dd className="mt-1 break-words">{row.work.blockingDependency}</dd></div>}
         <div><dt className="text-xs text-muted-foreground">Decision date</dt><dd className="mt-1">{row.work.nextDecisionDate ?? "Not set"}</dd></div>
@@ -124,9 +135,9 @@ export function ReleaseWorkTable({ components, work, generatedAt }: {
     </div>
     <p className="text-xs leading-5 text-muted-foreground">Only open or unverified issues and PRs are shown. Actions also filters components to unfinished work. Expand a row for its checks and evidence.</p>
     <div tabIndex={0} role="region" aria-label="Unified release work" className="max-h-[720px] overflow-auto rounded-[24px] bg-card focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-brand">
-      <table className="w-full min-w-[1060px] border-collapse text-left text-[13px] leading-5">
+      <table className="w-full min-w-[1240px] border-collapse text-left text-[13px] leading-5">
         <thead className="sticky top-0 z-10 bg-muted text-xs text-muted-foreground"><tr>
-          {heading("Work item", "title")}{heading("Group", "group")}{heading("Component", "component")}{heading("State", "status")}{heading("Owner / assignee", "owner")}<th scope="col" className="px-4 py-4 font-medium">Version</th>{heading("Date", "date")}
+          {heading("Work item", "title")}{heading("Group", "group")}{heading("Component", "component")}{heading("State", "status")}{heading("Next action", "nextAction")}{heading("Owner / assignee", "owner")}<th scope="col" className="px-4 py-4 font-medium">Version</th>{heading("Date", "date")}
         </tr></thead>
         <tbody>{visible.map((row) => {
           const open = expanded === row.id;
@@ -146,11 +157,12 @@ export function ReleaseWorkTable({ components, work, generatedAt }: {
               <td className="px-4 py-4 text-muted-foreground">{row.groupLabel}</td>
               <td className="px-4 py-4"><span className={cn("inline-flex rounded-full px-2.5 py-1 text-xs font-medium whitespace-nowrap", componentColors[row.componentId] ?? "bg-zinc-100 text-zinc-700")}>{row.componentLabel}</span></td>
               <td className="px-4 py-4"><StatusBadge tone={row.tone} label={row.status} title={row.work?.live.state === "unknown" ? row.work.live.error : row.kind === "component" ? c?.reason : undefined} /></td>
+              <td className="min-w-48 max-w-64 px-4 py-4"><span>{row.nextAction}</span>{row.waitingOn && <div className="mt-1 text-xs text-muted-foreground">Waiting on {row.waitingOn}</div>}{row.blocksOutcome && <div className="mt-1 text-xs text-muted-foreground">Outcome: {row.blocksOutcome}</div>}</td>
               <td className="max-w-[150px] break-words px-4 py-4"><div>{row.owner ?? (row.status === "Unknown" ? "Unknown" : "Unassigned")}</div><div className="mt-1 text-xs text-muted-foreground">{row.ownerLabel}</div></td>
               <td className="px-4 py-4 text-xs"><span className="font-mono">{c?.matchedRelease ?? c?.expectedVersion ?? "—"}</span>{c && <div className="mt-1 text-muted-foreground">{c.matchedRelease ? row.work ? "Component release" : "Released" : c.expectedVersion ? "Target" : ""}</div>}</td>
               <td className="px-4 py-4"><RowDate row={row} now={now} today={generatedAt.slice(0, 10)} /></td>
             </tr>
-            {open && <tr id={`work-details-${row.id}`}><td colSpan={7} className="border-b border-border px-5 py-4"><RowDetails row={row} now={now} /></td></tr>}
+            {open && <tr id={`work-details-${row.id}`}><td colSpan={8} className="border-b border-border px-5 py-4"><RowDetails row={row} now={now} /></td></tr>}
           </Fragment>;
         })}</tbody>
       </table>

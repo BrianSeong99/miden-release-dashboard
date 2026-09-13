@@ -118,6 +118,16 @@ export function ReleaseOverview({ snapshot }: { snapshot: DashboardSnapshot }) {
           <div className="mt-3 break-words text-xs leading-relaxed text-muted-foreground" title={env.error}>
             {env.reason}
           </div>
+          {env.services && <details className="mt-3 text-xs leading-5">
+            <summary className="cursor-pointer text-muted-foreground">Service checks ({env.services.length})</summary>
+            <ul className="mt-3 space-y-3">{env.services.map((service) => <li key={service.name}>
+              <div className="font-medium">{service.name} · {service.version ?? "No version reported"}</div>
+              <div className="text-muted-foreground">Health: {service.healthy === null ? "unknown" : service.healthy ? "healthy" : "unhealthy"}{service.probe ? ` · Probe: ${service.probe}` : ""}</div>
+              {service.version && <div className="text-muted-foreground">Target: {service.expectedVersion ?? "Not confirmed"}{service.onTarget === true ? " · aligned" : service.onTarget === false ? " · differs" : ""}</div>}
+              {service.probeError && <p className="mt-1 break-words text-muted-foreground">{service.probeError}</p>}
+            </li>)}</ul>
+            <a href={env.statusUrl} target="_blank" rel="noreferrer" className="mt-3 block text-brand underline">Monitor evidence</a>
+          </details>}
         </Card>
       ))}
       <Card title="Critical blockers" icon={<ShieldAlert className="size-4" />}>

@@ -1,6 +1,8 @@
 import { parse as parseToml } from "smol-toml";
 import { parse as parseYaml } from "yaml";
 import { z } from "zod";
+import { cargoRequirement } from "./semver-utils";
+import { satisfies, valid } from "semver";
 import { err, ok } from "./fetch-utils";
 import { blobUrl, getRawFile, getSubmodulePointer } from "./github";
 import type { Detector } from "./schema";
@@ -140,27 +142,52 @@ async function runSubmoduleDetector(
   });
 }
 
-/** Run one dependency detector against the repo's monitored branch. */
+/** A lockfile only proves a version when one matching registry package exists.
+ * Path/git/patch substitutions need separate evidence and are left unresolved. */
+export function resolveCargoVersion(manifest: string, lock: string, dependency: string, requirement: string): string | null {
+  try {
+    const doc = parseToml(manifest) as Record<string, unknown>;
+    const workspace = doc.workspace as Record<string, unknown> | undefined;
+    const deps = (workspace?.dependencies ?? doc.dependencies) as Record<string, unknown> | undefined;
+    const entry = deps?.[dependency];
+    if (typeof entry === "object" && entry !== null && ("git" in entry || "path" in entry || "package" in entry)) return null;
+    if (doc.patch || doc.replace) return null;
+    const packages = parseToml(lock).package;
+    if (!Array.isArray(packages)) return null;
+    const matches = packages.filter((p) => typeof p === "object" && p !== null
+      && "name" in p && p.name === dependency && "version" in p && typeof p.version === "string"
+      && "source" in p && typeof p.source === "string" && p.source.startsWith("registry+")
+      && satisfies(p.version, cargoRequirement(requirement)));
+    return matches.length === 1 ? String((matches[0] as Record<string, unknown>).version) : null;
+  } catch { return null; }
+}
+
+type RawReader = typeof getRawFile;
+
+/** Read declarations and lock evidence from the same source ref. */
 export async function runDepDetector(
   repo: string,
   branch: string,
   detector: DepDetector,
+  read: RawReader = getRawFile,
 ): Promise<Result<DetectedVersion>> {
-  if (detector.type === "submodule-dep") return runSubmoduleDetector(repo, branch, detector);
-  const file = await getRawFile(repo, detector.path, branch);
+  if (detector.type === "submodule-dep") {
+    const result = await runSubmoduleDetector(repo, branch, detector);
+    return result.ok ? ok({ ...result.value, resolution: "range", resolvedVersion: null,
+      resolutionNote: "Submodule declaration; resolved installation not verified" }) : result;
+  }
+  const file = await read(repo, detector.path, branch);
   if (!file.ok) return err(file.error);
   const url = blobUrl(repo, branch, detector.path);
   let raw: string | null;
+  try {
+    if (detector.type === "cargo-dep") parseToml(file.value);
+    if (detector.type === "npm-dep") JSON.parse(file.value);
+  } catch { return err(`Invalid ${detector.path}`); }
   switch (detector.type) {
-    case "cargo-dep":
-      raw = extractCargoDependency(file.value, detector.dependency);
-      break;
-    case "npm-dep":
-      raw = extractNpmDependency(file.value, detector.dependency);
-      break;
-    case "yaml-manifest":
-      raw = extractYamlKey(file.value, detector.key);
-      break;
+    case "cargo-dep": raw = extractCargoDependency(file.value, detector.dependency); break;
+    case "npm-dep": raw = extractNpmDependency(file.value, detector.dependency); break;
+    case "yaml-manifest": raw = extractYamlKey(file.value, detector.key); break;
     case "midenup-channel": {
       const pin = readMidenupChannelComponent(file.value, detector.channel, detector.component);
       if (!pin.ok) return pin;
@@ -168,7 +195,19 @@ export async function runDepDetector(
       break;
     }
   }
-  // raw === null: the manifest was fetched but the target is absent — that is
-  // positive "not started" evidence, not a failure.
-  return ok({ raw, source: detectorLabel(detector), url });
+  const base = { raw, source: detectorLabel(detector), url };
+  if (detector.type === "cargo-dep" && raw) {
+    // Workspace lockfile lives at root. Nested standalone packages may carry
+    // their own lock; try that first, then root without mixing refs.
+    const nested = detector.path.replace(/Cargo\.toml$/, "Cargo.lock");
+    let lock = await read(repo, nested, branch);
+    let lockPath = nested;
+    if (!lock.ok && nested !== "Cargo.lock") { lock = await read(repo, "Cargo.lock", branch); lockPath = "Cargo.lock"; }
+    const resolvedVersion = lock.ok ? resolveCargoVersion(file.value, lock.value, detector.dependency, raw) : null;
+    return ok({ ...base, resolution: resolvedVersion ? "locked" : /^=\s*\d+\.\d+\.\d+/.test(raw) ? "exact" : "range",
+      resolvedVersion, resolutionUrl: resolvedVersion ? blobUrl(repo, branch, lockPath) : undefined,
+      resolutionNote: resolvedVersion ? undefined : "Resolved dependency unavailable or ambiguous; showing declaration" });
+  }
+  const exact = detector.type !== "npm-dep" || (raw !== null && valid(raw) !== null);
+  return ok({ ...base, resolution: exact ? "exact" : "range", resolvedVersion: null });
 }

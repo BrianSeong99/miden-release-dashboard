@@ -1,5 +1,5 @@
 import { err, ok, safeFetch, truncate } from "./fetch-utils";
-import type { GhRelease, IssueLiveState, ReleaseHistory, Result } from "./types";
+import type { GhRelease, IssueLiveState, ReleaseHistory, Result, WorkEvidence } from "./types";
 import { z } from "zod";
 
 // Server-side GitHub REST adapter. GITHUB_TOKEN is read here and nowhere else;
@@ -177,4 +177,55 @@ export async function getSubmodulePointer(
 
 export function blobUrl(repo: string, ref: string, path: string): string {
   return `https://github.com/${repo}/blob/${encodeURIComponent(ref)}/${path}`;
+}
+
+const prSchema = z.object({
+  draft: z.boolean(), created_at: z.iso.datetime(), merged_at: z.iso.datetime().nullable(),
+  requested_reviewers: z.array(z.object({ login: z.string() })),
+  requested_teams: z.array(z.object({ slug: z.string() })).optional(),
+  head: z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/) }),
+});
+
+/** Current head checks and actual ready-for-review events; no synthetic dates. */
+export async function getWorkEvidence(repo: string, number: number): Promise<Result<WorkEvidence>> {
+  const detail = await getRepoJson(repo, `pulls/${number}`);
+  if (!detail.ok) return detail;
+  const parsed = prSchema.safeParse(detail.value);
+  if (!parsed.success) return err("PR workflow metadata unavailable");
+  const pr = parsed.data;
+  const [checks, statuses, timeline] = await Promise.all([
+    getRepoJson(repo, `commits/${pr.head.sha}/check-runs?per_page=100`),
+    getRepoJson(repo, `commits/${pr.head.sha}/status?per_page=100`),
+    getRepoJson(repo, `issues/${number}/timeline?per_page=100`),
+  ]);
+  const cs = z.object({ total_count: z.number(), check_runs: z.array(z.object({ status: z.string(), conclusion: z.string().nullable() })) });
+  const ss = z.object({ state: z.string(), total_count: z.number(), statuses: z.array(z.unknown()) });
+  const c = checks.ok ? cs.safeParse(checks.value) : null;
+  const s = statuses.ok ? ss.safeParse(statuses.value) : null;
+  let checkState: WorkEvidence["checks"] = "unknown";
+  if (c?.success && s?.success && c.data.total_count === c.data.check_runs.length && s.data.total_count === s.data.statuses.length) {
+    const runs = c.data.check_runs;
+    if (runs.some((r) => r.status === "completed" && !["success", "neutral", "skipped"].includes(r.conclusion ?? "")) || ["failure", "error"].includes(s.data.state)) checkState = "failing";
+    else if (runs.some((r) => r.status !== "completed") || (s.data.total_count > 0 && s.data.state === "pending")) checkState = "pending";
+    else if (runs.length + s.data.total_count > 0) checkState = "passing";
+  }
+  const events = z.array(z.object({ event: z.string(), created_at: z.iso.datetime().optional() })).safeParse(timeline.ok ? timeline.value : null);
+  // 100 events could be a truncated first page; don't infer a current review start.
+  let readyAt: string | null = null;
+  if (events.success && events.data.length < 100 && !pr.draft) {
+    for (const event of events.data) {
+      if (event.event === "convert_to_draft") readyAt = null;
+      if (event.event === "ready_for_review") readyAt = event.created_at ?? null;
+    }
+  }
+  return ok({ draft: pr.draft, reviewers: [...pr.requested_reviewers.map((r) => r.login), ...(pr.requested_teams ?? []).map((t) => `team:${t.slug}`)],
+    checks: checkState, openedAt: pr.created_at, mergedAt: pr.merged_at, readyAt,
+    error: checkState === "unknown" ? "Complete CI evidence unavailable; check GitHub before merging" : undefined });
+}
+
+export async function resolveReleaseRef(repo: string, tag: string): Promise<Result<string>> {
+  const response = await getRepoJson(repo, `commits/${encodeURIComponent(tag)}`);
+  if (!response.ok) return response;
+  const parsed = z.object({ sha: z.string().regex(/^[a-f0-9]{40}$/) }).safeParse(response.value);
+  return parsed.success ? ok(parsed.data.sha) : err(`Release commit could not be verified for ${tag}`);
 }

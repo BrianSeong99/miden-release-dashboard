@@ -142,3 +142,36 @@ blockers:
     exitCondition: "Verify recovery behavior on current fee-charging releases and decide whether a fix is required"
     nextDecisionDate: null
     github: { repo: 0xMiden/wallet, number: 805 }
+
+  # Public migration handoff: https://github.com/0xMiden/compiler/pull/1388
+  - id: compiler-v17-migration
+    title: "Compiler v0.17 migration"
+    severity: high
+    category: migration
+    gateScope: outcome
+    release: "0.17"
+    stage: compiler
+    owner: null
+    exitCondition: "Complete the Rust SDK dependency migration, merge the compiler migration and publish compiler 0.11"
+    nextDecisionDate: null
+    github: { repo: 0xMiden/compiler, number: 1388 }
+    handoff:
+      nextAction: "Finish compiler migration after the Rust SDK release"
+      waitingOn: "Rust SDK v0.17 migration and release"
+      blocksOutcome: "Compiler 0.11 publication"
+      confirmedBy: "Public PR description"
+      confirmedAt: "2026-09-13T05:05:52Z"
+      evidenceUrl: https://github.com/0xMiden/compiler/pull/1388
+
+  - id: docs-v16-tutorial-update
+    title: "Docs v0.16 tutorial updates"
+    severity: medium
+    category: migration
+    gateScope: outcome
+    release: "0.16"
+    stage: docs
+    owner: null
+    blockingDependency: "Docs tutorial content; versioned snapshot publication is checked separately"
+    exitCondition: "Complete and review the tutorial updates in docs #368"
+    nextDecisionDate: null
+    github: { repo: 0xMiden/docs, number: 368 }

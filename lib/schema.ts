@@ -92,6 +92,19 @@ export const ComponentSchema = z.strictObject({
   group: z.enum(["chain", "sdk", "app", "toolchain", "devex", "walnut"]),
   dependsOn: z.array(z.string()).default([]),
   detectors: z.array(DetectorSchema).min(1),
+  verification: z.strictObject({
+    status: z.enum(["passed", "failed"]),
+    version: z.string().min(1),
+    environment: z.string().min(1),
+    observedAt: z.iso.datetime(),
+    confirmedBy: z.string().min(1),
+    evidenceUrl: z.url(),
+  }).optional(),
+  distribution: z.strictObject({
+    sourceBranch: z.string().min(1),
+    publishedUrl: z.url(),
+    channel: z.string().min(1),
+  }).optional(),
 });
 export type ComponentConfig = z.infer<typeof ComponentSchema>;
 
@@ -118,6 +131,7 @@ export const ReleaseSchema = z.strictObject({
   targetVersion: trainString,
   targetDate: z.iso.date().nullable().default(null),
   components: z.array(ComponentSchema).min(1),
+  serviceVersions: z.record(z.string().min(1), trainString.nullable()).optional(),
 });
 export type ReleaseDefinition = z.infer<typeof ReleaseSchema>;
 
@@ -146,6 +160,15 @@ export const BlockerSchema = z.strictObject({
     number: z.number().int().positive(),
   }),
   notionUrl: z.url().optional(),
+  gateScope: z.enum(["release", "outcome"]).optional(),
+  handoff: z.strictObject({
+    nextAction: z.string().min(1),
+    waitingOn: z.string().min(1).nullable(),
+    blocksOutcome: z.string().min(1),
+    confirmedBy: z.string().min(1),
+    confirmedAt: z.iso.datetime(),
+    evidenceUrl: z.url(),
+  }).optional(),
 });
 export type BlockerConfig = z.infer<typeof BlockerSchema>;
 

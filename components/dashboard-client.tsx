@@ -137,7 +137,7 @@ export function DashboardClient({ initial }: { initial: DashboardSnapshot }) {
       </Section>
 
       <Section title="Release timing">
-        <ReleaseTimingPanel components={snapshot.components} generatedAt={snapshot.generatedAt} releaseVersion={snapshot.release.targetVersion} />
+        <ReleaseTimingPanel work={snapshot.blockers} components={snapshot.components} generatedAt={snapshot.generatedAt} releaseVersion={snapshot.release.targetVersion} />
       </Section>
 
 

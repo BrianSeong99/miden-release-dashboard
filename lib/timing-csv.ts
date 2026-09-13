@@ -1,6 +1,6 @@
 import type { ComponentStatus, PropagationTiming } from "./types";
 
-function cell(value: string | number | null | undefined) {
+export function cell(value: string | number | null | undefined) {
   const text = String(value ?? "");
   // Public repository labels and tags can contain spreadsheet formulas.
   const safe = typeof value === "string" && /^[=+\-@\t\r]/.test(text) ? `'${text}` : text;

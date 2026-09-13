@@ -76,7 +76,7 @@ describe("DependencyDag", () => {
       // Same-purpose peers have separate positions without an invented edge.
       expect(left("compiler")).toBeGreaterThan(left("debugger"));
       expect(document.querySelector('[data-from="debugger"][data-to="compiler"]')).toBeNull();
-      expect(screen.getByTestId("dag-node-compiler")).toHaveTextContent("Target version TBD");
+      expect(screen.getByTestId("dag-node-compiler")).toHaveTextContent("0.11 train");
     } else expect(left("compiler")).toBeGreaterThan(left("protocol"));
     expect(screen.getByTestId("dag-node-midenup")).toHaveTextContent(`Channel ${train}`);
     fireEvent.click(screen.getByTestId("dag-node-midenup"));

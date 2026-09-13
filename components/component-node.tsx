@@ -66,6 +66,14 @@ export function ComponentNode({ component: c, now }: { component: ComponentStatu
         </div>
       </div>
 
+      <div className="text-xs leading-5 text-muted-foreground">Usage verification: {c.verification ? <><ManualBadge note={`Reported by ${c.verification.confirmedBy}`} /> {c.verification.status} for {c.verification.version} on {c.verification.environment} · <ReleaseDate publishedAt={c.verification.observedAt} showAge={false} compact /> <EvidenceLink label="Verification evidence" url={c.verification.evidenceUrl} /></> : "Not recorded"}</div>
+      {c.dependencyRef && <p className="text-xs text-muted-foreground">Dependencies from {c.dependencyRef.kind === "release" ? "published release" : c.dependencyRef.kind === "distribution" ? "public distribution" : "development source"}: <a href={c.dependencyRef.url} target="_blank" rel="noreferrer" className="underline">{c.dependencyRef.ref}</a>. Development branch: {c.branch}.</p>}
+      {c.distribution && <div className="rounded-2xl bg-card p-4 text-xs leading-5">
+        <p className="font-medium">Distribution: {c.distribution.state === "pending" ? "Awaiting publication" : c.distribution.state}</p>
+        <p className="mt-1 text-muted-foreground">{c.distribution.reason}</p>
+        <div className="mt-2 flex gap-4"><EvidenceLink label="Development source" url={c.distribution.sourceUrl} /><EvidenceLink label="Public manifest" url={c.distribution.publishedUrl} /></div>
+        {c.distribution.changes.length > 0 && <details className="mt-2"><summary className="cursor-pointer">{c.distribution.changes.length} publication differences</summary><ul className="mt-2 space-y-1">{c.distribution.changes.map((change) => <li key={change}>{change}</li>)}</ul></details>}
+      </div>}
       {c.deps.length > 0 && (
         <div className="flex flex-col gap-2 border-t border-white pt-4">
           {c.deps.map((d) => (
@@ -95,7 +103,8 @@ export function ComponentNode({ component: c, now }: { component: ComponentStatu
                 )}
                 title={d.staleBehind ? `On the right train, but ${d.staleBehind} is out` : undefined}
               >
-                {d.version ?? (d.error ? "?" : "absent")}
+                {d.resolution === "range" ? d.raw ?? "absent" : d.version ?? (d.error ? "?" : "absent")}
+                {d.resolution && <span className="block font-sans text-[11px] text-muted-foreground">{d.resolution === "locked" ? <a href={d.resolutionUrl} target="_blank" rel="noreferrer" className="underline">Locked · requires {d.raw}</a> : d.resolution === "range" ? "Declared range · resolution unverified" : "Exact declaration"}</span>}
                 {d.staleBehind ? ` (${d.staleBehind} out)` : d.onTarget === true ? " ✓" : d.onTarget === false ? " ✗" : ""}
               </span>
             </div>
@@ -117,7 +126,7 @@ export function ComponentNode({ component: c, now }: { component: ComponentStatu
         )}
         {c.evidence.length > 0 && (
           <div className="flex flex-wrap gap-x-4 gap-y-2 pt-1">
-            {c.evidence.slice(0, 3).map((e) => (
+            {c.evidence.map((e) => (
               <EvidenceLink key={e.url + e.label} label={e.label} url={e.url} />
             ))}
           </div>

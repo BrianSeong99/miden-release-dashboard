@@ -8,7 +8,7 @@ describe("release toolchain configuration", () => {
     const release = loadConfig().release.releases.find((r) => r.targetVersion === train)!;
     const components = new Map(release.components.map((c) => [c.id, c]));
     expect(components.get("debugger")?.dependsOn).toEqual(["vm"]);
-    expect(components.get("compiler")?.dependsOn).toEqual(train === "0.17" ? ["vm"] : ["vm", "protocol", "debugger"]);
+    expect(components.get("compiler")?.dependsOn).toEqual(train === "0.17" ? ["vm", "rust-sdk"] : ["vm", "protocol", "debugger"]);
     if (train !== "0.15") expect(components.get("rust-sdk")?.dependsOn).toContain("debugger");
     const toolchain = components.get("midenup")!;
     expect(toolchain.group).toBe("toolchain");
@@ -19,9 +19,9 @@ describe("release toolchain configuration", () => {
     expect(pins.find((d) => d.component === "debug")?.targetTrain).toBe({ "0.15": "0.8", "0.16": "0.10", "0.17": "0.15" }[train]);
   });
 
-  it("does not invent a compiler version for v17, whose VM dependency is 0.32", () => {
+  it("uses the compiler 0.11 plan evidenced by migration PR #1388", () => {
     const components = loadConfig().release.releases.find((r) => r.targetVersion === "0.17")!.components;
-    expect(components.find((c) => c.id === "compiler")?.expectedVersion).toBeNull();
+    expect(components.find((c) => c.id === "compiler")?.expectedVersion).toBe("0.11.0");
     expect(components.find((c) => c.id === "vm")?.expectedVersion).toBe("0.32.0");
   });
 
@@ -54,7 +54,7 @@ describe("release toolchain configuration", () => {
   it("does not mark an unconfirmed compiler release ready just because its VM pin was updated", () => {
     const config = loadConfig().release.releases.find((r) => r.targetVersion === "0.17")!.components.find((c) => c.id === "compiler")!;
     const s = deriveComponentStatus({
-      config, releases: null, releaseTargetVersion: "0.17", blockers: [], migrationPrOpen: null,
+      config: { ...config, expectedVersion: null }, releases: null, releaseTargetVersion: "0.17", blockers: [], migrationPrOpen: null,
       depFindings: [{ detector: { type: "cargo-dep", dependency: "miden-core", path: "Cargo.toml", targetTrain: "0.32" },
         result: { ok: true, checkedAt: "2026-09-10T00:00:00Z", value: { raw: "0.32.0", source: "VM", url: "https://github.com/0xMiden/compiler" } } }],
     });

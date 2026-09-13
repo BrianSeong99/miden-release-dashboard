@@ -121,8 +121,8 @@ describe("seed config files", () => {
       expect(b.owner).toBeNull();
       expect(b.exitCondition).toBeTruthy();
       expect(b.nextDecisionDate).toBeNull();
-      expect(b.category).toBe("follow-up");
-      expect(b.release).toBe(b.id === "node-batch-fees" ? "0.17" : "0.16");
+      expect(b.category).toBe(["compiler-v17-migration", "docs-v16-tutorial-update"].includes(b.id) ? "migration" : "follow-up");
+      expect(b.release).toBe(["node-batch-fees", "compiler-v17-migration"].includes(b.id) ? "0.17" : "0.16");
     }
   });
   it("tracks project-template skills migration only on its v0.16 train", () => {
