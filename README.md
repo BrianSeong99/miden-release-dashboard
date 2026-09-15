@@ -161,6 +161,18 @@ Selected meeting notes or Slack threads can be translated into these YAML fields
 connectors. Keep private notes and private source links outside this public repository; corroborate
 published changes with public evidence. Validate every config diff with `npm run validate-config`.
 
+## Bridge Portal
+
+Bridge Portal is tracked alongside Wallet in Applications and the dependency map, with Web SDK
+and Wallet connections. Its package.json checks cover Web SDK, React SDK and both wallet adapters.
+Wallet adapters follow the Miden SDK train, not Wallet's independent 1.x application version.
+GitHub releases supply publication dates and history.
+
+Bridge Portal v0.1.0's manifest uses Web SDK 0.15.7, so that release is mapped only to the v0.15 view.
+The v0.16/v0.17 app release targets remain unconfirmed; their dependency checks read main. An older
+release cannot mark these views ready. The table and component details show the latest historical
+publication as **Latest release (any train)** when the target release version is not yet known.
+
 ## Develop
 
 ```

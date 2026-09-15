@@ -156,3 +156,15 @@ it("searches and sorts next actions while keeping reviewers separate from assign
   fireEvent.click(screen.getByRole("button",{name:"Show details for Refresh docs"}));
   expect(screen.getByText("Migration milestones")).toBeInTheDocument();
 });
+
+it("shows Bridge Portal's historical release without claiming it shipped on the selected train", () => {
+  const latest = {tagName:"v0.1.0",prerelease:false,publishedAt:"2026-07-23T06:56:31Z",htmlUrl:"https://github.com/0xMiden/bridge-portal/releases/tag/v0.1.0"};
+  const bridge = component("bridge-portal","Bridge Portal",{group:"app",expectedVersion:null,status:"not-started",latestStable:"0.1.0",releaseTiming:{source:"github-release",historyComplete:true,latest,latestOnTrain:null,firstStable:null,stableState:"unknown",history:[]}});
+  render(<ReleaseWorkTable components={[bridge]} work={[]} generatedAt={at} />);
+  expect(row("component-bridge-portal")).toHaveTextContent("Applications");
+  expect(row("component-bridge-portal")).toHaveTextContent("v0.1.0Latest (any train)");
+  expect(row("component-bridge-portal")).toHaveTextContent("Latest release (any train)");
+  expect(row("component-bridge-portal")).toHaveTextContent("2026-07-23 06:56:31 UTC");
+  fireEvent.click(screen.getByRole("button",{name:/Show details for Bridge Portal/}));
+  expect(screen.getAllByText("Latest release (any train)")).toHaveLength(2);
+});

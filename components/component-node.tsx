@@ -18,7 +18,8 @@ function VersionRow({ label, value }: { label: string; value: string | null }) {
 
 export function ComponentNode({ component: c, now }: { component: ComponentStatus; now?: number }) {
   const isDocs = c.docsSnapshot !== undefined || c.releaseTiming?.source === "docs-deployment";
-  const publishedAt = isDocs ? c.docsSnapshot?.publishedAt ?? null : c.matchedPublishedAt;
+  const historical = !isDocs && c.expectedVersion === null && !c.matchedPublishedAt ? c.releaseTiming?.latest : null;
+  const publishedAt = isDocs ? c.docsSnapshot?.publishedAt ?? null : c.matchedPublishedAt ?? historical?.publishedAt ?? null;
   const missingPublication = c.releaseTiming?.source === "not-monitored" ? "Not monitored"
     : isDocs && c.docsSnapshot?.published === false ? "Not published"
     : c.releaseTiming?.stableState === "unreleased" && !c.releaseTiming.latestOnTrain && !c.matchedRelease ? "Not released"
@@ -59,7 +60,7 @@ export function ComponentNode({ component: c, now }: { component: ComponentStatu
           <VersionRow label="Latest RC" value={c.latestRc} />
         </> : null}
         <div className="flex items-baseline justify-between gap-3 text-[13px] leading-5">
-          <span className="shrink-0 text-muted-foreground">{isDocs ? "Latest deployment" : "Released"}</span>
+          <span className="shrink-0 text-muted-foreground">{isDocs ? "Latest deployment" : historical ? "Latest release (any train)" : "Released"}</span>
           <span className="min-w-0 break-words text-right">
             {publishedAt ? <ReleaseDate publishedAt={publishedAt} now={now} /> : missingPublication}
           </span>

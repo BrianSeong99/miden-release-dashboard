@@ -230,3 +230,15 @@ describe("DependencyDag", () => {
     }
   });
 });
+
+it("places Bridge Portal in Applications with only the configured upstream arrows", () => {
+  const bridge = comp("bridge-portal", "app", ["web-sdk", "wallet"], {label:"Bridge Portal",expectedVersion:null,matchedRelease:null});
+  render(<DependencyDag components={[...components,bridge]} rollups={rollups} targetVersion="0.16" generatedAt="2026-09-14T00:00:00Z" />);
+  const node = screen.getByTestId("dag-node-bridge-portal");
+  expect(node).toBeInTheDocument();
+  expect(node.style.top).toBe(screen.getByTestId("dag-node-wallet").style.top);
+  for(const from of ["web-sdk","wallet"]) expect(document.querySelector(`[data-from="${from}"][data-to="bridge-portal"]`)).not.toBeNull();
+  expect(document.querySelector('[data-from="guardian"][data-to="bridge-portal"]')).toBeNull();
+  fireEvent.click(node);
+  expect(screen.getByTestId("dag-detail")).toHaveTextContent("Bridge Portal");
+});
