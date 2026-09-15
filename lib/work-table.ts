@@ -19,7 +19,7 @@ export interface WorkRow {
   waitingOn: string | null;
   blocksOutcome: string | null;
   date: string | null;
-  dateLabel: "Released" | "Latest deployment" | "Decision date";
+  dateLabel: "Released" | "Latest release (any train)" | "Latest deployment" | "Decision date";
   url: string;
   component?: ComponentStatus;
   work?: BlockerView;
@@ -60,6 +60,7 @@ export function buildWorkRows(components: readonly ComponentStatus[], work: read
   const byId = new Map(components.map((component) => [component.id, component]));
   const componentRows = components.map((component): WorkRow => {
     const group = groupOf(component);
+    const historical = component.expectedVersion === null && !component.matchedPublishedAt ? component.releaseTiming?.latest : null;
     return {
       id: `component-${component.id}`, kind: "component", title: component.label,
       group, groupLabel: GROUP_LABEL[group] ?? "Other", componentId: component.id, componentLabel: component.label,
@@ -71,8 +72,8 @@ export function buildWorkRows(components: readonly ComponentStatus[], work: read
         : component.status === "unknown" ? "Confirm missing evidence"
         : READY_COMPONENTS.has(component.status) ? "—" : "Inspect migration and release evidence",
       waitingOn: null, blocksOutcome: null,
-      active: !READY_COMPONENTS.has(component.status), date: validDate(component.matchedPublishedAt),
-      dateLabel: component.id === "docs" || component.docsSnapshot !== undefined || component.status === "docs-published" ? "Latest deployment" : "Released",
+      active: !READY_COMPONENTS.has(component.status), date: validDate(component.matchedPublishedAt ?? historical?.publishedAt),
+      dateLabel: component.id === "docs" || component.docsSnapshot !== undefined || component.status === "docs-published" ? "Latest deployment" : historical ? "Latest release (any train)" : "Released",
       url: `https://github.com/${component.repo}`, component,
     };
   });

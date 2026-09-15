@@ -120,6 +120,31 @@ releases:
         dependsOn: [web-sdk, guardian]
         detectors:
           - type: github-release
+      # Bridge Portal versions independently; its v0.1.0 release uses SDK 0.15.7.
+      # https://github.com/0xMiden/bridge-portal/blob/v0.1.0/package.json
+      - id: bridge-portal
+        label: "Bridge Portal"
+        repo: 0xMiden/bridge-portal
+        branch: main
+        owner: "Bridge Portal maintainers"
+        expectedVersion: "0.1.0" # v0.1.0 manifest targets Miden 0.15
+        group: app
+        dependsOn: [web-sdk, wallet]
+        detectors:
+          - type: github-release
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
+            targetTrain: "0.15"
+          - type: npm-dep
+            dependency: "@miden-sdk/react"
+            targetTrain: "0.15"
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-wallet-adapter-base"
+            targetTrain: "0.15"
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-wallet-adapter-react"
+            targetTrain: "0.15"
       - id: docs
         label: "Docs"
         repo: 0xMiden/docs
@@ -465,6 +490,31 @@ releases:
             dependency: "@openzeppelin/guardian-client"
             provesComponent: guardian
             targetTrain: "0.17"
+      # Bridge Portal versions independently; its v0.1.0 release uses SDK 0.15.7.
+      # https://github.com/0xMiden/bridge-portal/blob/v0.1.0/package.json
+      - id: bridge-portal
+        label: "Bridge Portal"
+        repo: 0xMiden/bridge-portal
+        branch: main
+        owner: "Bridge Portal maintainers"
+        expectedVersion: null # Bridge Portal has no confirmed release version for Miden 0.16
+        group: app
+        dependsOn: [web-sdk, wallet]
+        detectors:
+          - type: github-release
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
+            targetTrain: "0.16"
+          - type: npm-dep
+            dependency: "@miden-sdk/react"
+            targetTrain: "0.16"
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-wallet-adapter-base"
+            targetTrain: "0.16"
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-wallet-adapter-react"
+            targetTrain: "0.16"
       - id: docs
         label: "Docs"
         repo: 0xMiden/docs
@@ -851,6 +901,31 @@ releases:
           - type: npm-dep
             dependency: "@miden-sdk/miden-sdk"
             provesComponent: web-sdk
+      # Bridge Portal versions independently; its v0.1.0 release uses SDK 0.15.7.
+      # https://github.com/0xMiden/bridge-portal/blob/v0.1.0/package.json
+      - id: bridge-portal
+        label: "Bridge Portal"
+        repo: 0xMiden/bridge-portal
+        branch: main
+        owner: "Bridge Portal maintainers"
+        expectedVersion: null # Bridge Portal has no confirmed release version for Miden 0.17
+        group: app
+        dependsOn: [web-sdk, wallet]
+        detectors:
+          - type: github-release
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-sdk"
+            provesComponent: web-sdk
+            targetTrain: "0.17"
+          - type: npm-dep
+            dependency: "@miden-sdk/react"
+            targetTrain: "0.17"
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-wallet-adapter-base"
+            targetTrain: "0.17"
+          - type: npm-dep
+            dependency: "@miden-sdk/miden-wallet-adapter-react"
+            targetTrain: "0.17"
       - id: docs
         label: "Docs"
         repo: 0xMiden/docs

@@ -29,6 +29,7 @@ const componentColors: Record<string, string> = {
   "web-sdk": "bg-sky-100 text-sky-700",
   guardian: "bg-emerald-100 text-emerald-700",
   wallet: "bg-teal-100 text-teal-700",
+  "bridge-portal": "bg-cyan-100 text-cyan-800",
   docs: "bg-blue-100 text-blue-700",
   tutorials: "bg-yellow-100 text-yellow-700",
   "frontend-template": "bg-cyan-100 text-cyan-700",
@@ -142,6 +143,7 @@ export function ReleaseWorkTable({ components, work, generatedAt }: {
         <tbody>{visible.map((row) => {
           const open = expanded === row.id;
           const c = row.component;
+          const historical = c?.expectedVersion === null && !c.matchedRelease ? c.releaseTiming?.latest : null;
           return <Fragment key={row.id}>
             <tr data-testid={`work-row-${row.id}`} className={cn("border-b border-border/60 align-top hover:bg-muted/50", open && "bg-muted/50")}>
               <td className="max-w-[360px] px-4 py-4"><div className="flex items-start gap-2">
@@ -159,7 +161,7 @@ export function ReleaseWorkTable({ components, work, generatedAt }: {
               <td className="px-4 py-4"><StatusBadge tone={row.tone} label={row.status} title={row.work?.live.state === "unknown" ? row.work.live.error : row.kind === "component" ? c?.reason : undefined} /></td>
               <td className="min-w-48 max-w-64 px-4 py-4"><span>{row.nextAction}</span>{row.waitingOn && <div className="mt-1 text-xs text-muted-foreground">Waiting on {row.waitingOn}</div>}{row.blocksOutcome && <div className="mt-1 text-xs text-muted-foreground">Outcome: {row.blocksOutcome}</div>}</td>
               <td className="max-w-[150px] break-words px-4 py-4"><div>{row.owner ?? (row.status === "Unknown" ? "Unknown" : "Unassigned")}</div><div className="mt-1 text-xs text-muted-foreground">{row.ownerLabel}</div></td>
-              <td className="px-4 py-4 text-xs"><span className="font-mono">{c?.matchedRelease ?? c?.expectedVersion ?? "—"}</span>{c && <div className="mt-1 text-muted-foreground">{c.matchedRelease ? row.work ? "Component release" : "Released" : c.expectedVersion ? "Target" : ""}</div>}</td>
+              <td className="px-4 py-4 text-xs"><span className="font-mono">{c?.matchedRelease ?? c?.expectedVersion ?? historical?.tagName ?? "—"}</span>{c && <div className="mt-1 text-muted-foreground">{c.matchedRelease ? row.work ? "Component release" : "Released" : c.expectedVersion ? "Target" : historical ? "Latest (any train)" : ""}</div>}</td>
               <td className="px-4 py-4"><RowDate row={row} now={now} today={generatedAt.slice(0, 10)} /></td>
             </tr>
             {open && <tr id={`work-details-${row.id}`}><td colSpan={8} className="border-b border-border px-5 py-4"><RowDetails row={row} now={now} /></td></tr>}
